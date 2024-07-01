@@ -1,3 +1,4 @@
+#%%
 '''
 Author: Owen A. Johnson (ojohnson@tcd.ie)
 Last Major Update: 2024-06-28
@@ -11,6 +12,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 import sys 
+from scipy import stats
 
 # --- Preamble --- 
 verbose = False
@@ -86,6 +88,18 @@ for i in range(QMS_datasum_df.shape[0]):
 
     # - load the data - 
     time, amu, pryro_temp, col_temp, counts = np.loadtxt(filepath_idx, unpack=True, skiprows=1, delimiter=',')
+    mask = (amu >= 10) & (amu <= 200)
+    time = time[mask]; amu = amu[mask]; pryro_temp = pryro_temp[mask]; col_temp = col_temp[mask]; counts = counts[mask]
+    counts = counts / np.max(counts) # Normalise the counts, overall. 
+
+    start_idxes = np.where(amu[:-1] > amu[1:])[0].tolist() # vectorised version of the above loop.
+
+    if verbose:
+        print('=== %s ===' % file_name)
+        print('AMU Entries:', len(amu))
+        print('AMU Difference Mode:', stats.mode(np.diff(amu))[0])
+        print('Mode Counts:', stats.mode(np.diff(amu))[1])
+        print('Average difference in AMU:', np.mean(np.diff(amu)))
 
     if verbose: print('Loading data for:', file_name)
 
@@ -99,25 +113,32 @@ for i in range(QMS_datasum_df.shape[0]):
         print('Counts:', counts.shape)
         continue
 
-    time = time - time[0] # Setting the time to start at 0
-    idxes = np.where(amu == 2.0)[0]
-
-    for j in tqdm(range(len(idxes))):
-        
-        if j + 1 == len(idxes): break
-
-        start_idx = idxes[j]
-        end_idx = idxes[j + 1]
-
-        if j > 0: start_idx += 1  # to avoid overlap
+    for k in range(len(start_idxes)):
+        if k == 0: 
+            start_idx = 0; end_idx = start_idxes[k]
+        if k + 1 < len(start_idxes):
+            start_idx = start_idxes[k] + 1; end_idx = start_idxes[k+1]
+        else:
+            continue
 
         count_indv = counts[start_idx:end_idx]
-        count_indv = count_indv / np.max(count_indv)
         amu_indv = amu[start_idx:end_idx]
-        peaks = find_peaks(count_indv, height=0.1)[0]
-        peaks_idx = [amu_indv[peak] for peak in peaks]
-        spec_n = j
 
+        if len(count_indv) == 0:
+            print('No data found for:', file_name, 'at indexes:', start_idx, end_idx)
+            exit('Exiting...')
+
+        peaks = find_peaks(count_indv, height=0.1)[0]
+        peaks_values = [count_indv[peak] for peak in peaks]
+        spec_n = k
+
+        if len(peaks) == 0:
+            if verbose: print('No peaks found for indexes:', start_idx, end_idx)
+            max_peak_amu = 0
+
+        else: 
+            max_peak_amu = amu_indv[np.argmax(peaks_values)]
+    
         # - Data Dictionary - 
         data_dict = {
             'time': time[start_idx:end_idx].tolist(), 
@@ -135,17 +156,17 @@ for i in range(QMS_datasum_df.shape[0]):
             'Data': (data_dict),  
             'Labels': (labels_dict),  
             'Unsure': (unsure_dict),  
-            'Peaks': (peaks.tolist()),  
-            'Peaks Index': (peaks_idx),  
+            'Peak Index': (peaks.tolist()),  
+            'Peak Values': (peaks_values),  
+            'Max Peak AMU': max_peak_amu,
             'Spectra Number': spec_n,
             'Transferred Pyrolysis Temperature': 'N/A', 
             'Blank': 1 if int(QMS_datasum_df.iloc[i]['EID']) in blanks_EID else 0
         }
-
         
         total_spectra_count += 1
         data_frame = data_frame.append(new_row, ignore_index=True)
-
+    
 print('Size of the data frame: %.9f Gb' % (sys.getsizeof(data_frame) / 1e9))
 print('Total number of spectra:', total_spectra_count)
 print('Number of rows in the data frame:', data_frame.shape[0])
