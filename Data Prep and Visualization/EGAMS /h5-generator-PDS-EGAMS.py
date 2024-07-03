@@ -1,3 +1,4 @@
+#%%
 '''
 Author: Owen A. Johnson (ojohnson@tcd.ie)
 Last Major Update: 2024-06-28
@@ -12,15 +13,41 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 import sys 
 from scipy import stats
-# Suppress specific FutureWarning about DataFrame.append
+
 warnings.filterwarnings("ignore", category=FutureWarning, message="The frame.append method is deprecated")
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered in divide")
 
+# --- Functions -- 
+
+def array_insert(amu_large, amu_small, counts_small):
+    """
+    Inserts missing values from amu_large into amu_small and adds corresponding zero counts in counts_small.
+
+    Parameters:
+    amu_large (numpy array): The larger array with all possible x values.
+    amu_small (numpy array): The smaller array with some missing x values.
+    counts_small (numpy array): The y values corresponding to amu_small.
+
+    Returns:
+    amu_complete (numpy array): The complete x array with all values from amu_large.
+    counts_complete (numpy array): The y array with added zeros for the missing x values.
+    """
+    
+    missing_values = np.setdiff1d(amu_large, amu_small) # Find missing values in the smaller array
+    amu_complete = np.append(amu_small, missing_values)
+
+    counts_complete = np.zeros(len(amu_complete)) # Create an array of zeros for the missing values
+
+    indices = np.searchsorted(amu_complete, amu_small)
+    counts_complete[indices] = counts_small
+
+    return amu_complete, counts_complete
+
+
 # --- Preamble --- 
 verbose = False
-
-min_amu = 10; max_amu = 100
-individual_normalisation = False
+min_amu = 10; max_amu = 150
+individual_normalisation = True
 
 nobelgas_EID = [25117, 25202, 25208, 25219, 25362, 25363, 25495]
 combustion_EID = [25173, 25174, 25175]
@@ -102,7 +129,7 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
         if individual_normalisation == False:
             counts = counts / np.max(counts) # Normalise the counts, overall. 
 
-        start_idxes = np.where(amu[:-1] > amu[1:])[0].tolist() # vectorised version of the above loop.
+        start_idxes = np.where(amu[:-1] > amu[1:])[0].tolist() # Finding the start of each spectrum, by finding where AMU decreases.
 
         if verbose:
             print('=== %s ===' % file_name)
@@ -111,17 +138,12 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             print('Mode Counts:', stats.mode(np.diff(amu))[1])
             print('Average difference in AMU:', np.mean(np.diff(amu)))
 
-        if verbose: print('Loading data for:', file_name)
-
         if len(amu) == 0: 
-            print('No data found for:', file_name)
-            print('Shapes:')
-            print('Time:', time.shape)
-            print('AMU:', amu.shape)
-            print('Pyro Temp:', pryro_temp.shape)
-            print('Col Temp:', col_temp.shape)
-            print('Counts:', counts.shape)
-            continue
+            raise ValueError('No data found for:', file_name)
+        
+        smart_scanning = False
+        amu_placeholder = np.arange(min_amu, max_amu + 1)
+        counts_placeholder = np.zeros(len(amu_placeholder))
 
         for k in range(len(start_idxes)):
             if k == 0: 
@@ -134,6 +156,32 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             count_indv = counts[start_idx:end_idx]; non_norm_counts = count_indv
             amu_indv = amu[start_idx:end_idx]
 
+            # --- Smart Scanning Adsorbtion --- 
+            amu_delta = np.max(amu_indv) - np.min(amu_indv)
+            if int(amu_delta) < 90:
+              
+                amu_replace, counts_replace = array_insert(previous_amu, amu_indv, count_indv)
+                amu_indv = amu_replace; count_indv = counts_replace
+                amu_indv, count_indv = array_insert(amu_placeholder, amu_indv, count_indv)
+                count_indv = previous_counts + count_indv
+
+                # plt.title(k)
+                # plt.plot(amu_indv, count_indv)
+                # plt.show()
+                
+
+            else: 
+                if np.min(amu_indv) <= min_amu and np.max(amu_indv) >= max_amu:
+                    continue
+                else:
+                    amu_indv, count_indv = array_insert(amu_placeholder, amu_indv, count_indv)
+                    plt.title(k)
+                    plt.plot(amu_indv, count_indv)
+                    plt.show()
+    
+            if k == 70: break 
+
+            # --- Normalisation for each time sample ---
             if individual_normalisation == True:
                 try: 
                     count_indv = count_indv / np.max(count_indv) # Normalise the counts for each spectrum.
@@ -183,21 +231,24 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             
             total_spectra_count += 1
             data_frame = data_frame.append(new_row, ignore_index=True)
-    
-print('Size of the data frame: %.9f Gb' % (sys.getsizeof(data_frame) / 1e9))
-print('Total number of spectra:', total_spectra_count)
-print('Number of rows in the data frame:', data_frame.shape[0])
-print('Number of unique filenames:', len(data_frame['Filename'].unique()))
 
-# --- Save the data ---
-hdf5_file = 'PDS_EGAMS_H5_files/EGAMS_PDS_Data_AMU;%s-%s_IndvNorm;%s.h5' % (min_amu, max_amu, individual_normalisation)
-data_frame.to_hdf(hdf5_file, key='EGAMS_PDS_Data', mode='w')
+            previous_amu = amu_indv; previous_counts = count_indv
+    break 
+# print('Size of the data frame: %.9f Gb' % (sys.getsizeof(data_frame) / 1e9))
+# print('Total number of spectra:', total_spectra_count)
+# print('Number of rows in the data frame:', data_frame.shape[0])
+# print('Number of unique filenames:', len(data_frame['Filename'].unique()))
 
-# --- HTML for viewing --- 
-results_df = pd.read_hdf(hdf5_file, 'EGAMS_PDS_Data')
-html = results_df.to_html()
-with open('PDS_EGAMS_PDS_Data.html', 'w') as f:
-    f.write(html)
+# # --- Save the data ---
+# hdf5_file = 'PDS_EGAMS_H5_files/EGAMS_PDS_Data_AMU;%s-%s_IndvNorm;%s.h5' % (min_amu, max_amu, individual_normalisation)
+# data_frame.to_hdf(hdf5_file, key='EGAMS_PDS_Data', mode='w')
+
+
+# # --- HTML for viewing --- 
+# results_df = pd.read_hdf(hdf5_file, 'EGAMS_PDS_Data')
+# html = results_df.to_html()
+# with open('PDS_EGAMS_PDS_Data.html', 'w') as f:
+#     f.write(html)
 
 # head_results = results_df.head()
 # head_results = head_results.drop(columns=['Data'])
