@@ -38,6 +38,7 @@ def array_insert(amu_large, amu_small, counts_small):
 
     counts_complete = np.zeros(len(amu_complete)) # Create an array of zeros for the missing values
 
+    amu_complete = np.sort(amu_complete)
     indices = np.searchsorted(amu_complete, amu_small)
     counts_complete[indices] = counts_small
 
@@ -80,6 +81,7 @@ mars_labels = ['carbonate', 'chloride', 'oxidized organic carbon', 'oxychlorine'
 # --- Data Collation ---
 data_frame = pd.DataFrame()
 total_spectra_count = 0 
+c = 0; u = 0
 
 for i in tqdm(range(QMS_datasum_df.shape[0])):
 
@@ -157,29 +159,23 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             amu_indv = amu[start_idx:end_idx]
 
             # --- Smart Scanning Adsorbtion --- 
-            amu_delta = np.max(amu_indv) - np.min(amu_indv)
-            if int(amu_delta) < 90:
-              
-                amu_replace, counts_replace = array_insert(previous_amu, amu_indv, count_indv)
-                amu_indv = amu_replace; count_indv = counts_replace
-                amu_indv, count_indv = array_insert(amu_placeholder, amu_indv, count_indv)
-                count_indv = previous_counts + count_indv
+            
+            if np.max(count_indv) < 0.1*np.max(counts): 
+                amu_padded, counts_complete = array_insert(amu_placeholder, amu_indv, count_indv)
+                summed_counts = counts_segment_padded + counts_complete
 
-                # plt.title(k)
-                # plt.plot(amu_indv, count_indv)
-                # plt.show()
+                count_indv = summed_counts
+                amu_indv = amu_padded
                 
-
             else: 
-                if np.min(amu_indv) <= min_amu and np.max(amu_indv) >= max_amu:
-                    continue
-                else:
-                    amu_indv, count_indv = array_insert(amu_placeholder, amu_indv, count_indv)
-                    plt.title(k)
-                    plt.plot(amu_indv, count_indv)
-                    plt.show()
-    
-            if k == 70: break 
+                amu_segment_padded, counts_segment_padded = array_insert(amu_placeholder, amu_indv, count_indv)
+
+                count_indv = counts_segment_padded
+                amu_indv = amu_segment_padded
+
+            if len(count_indv) != len(amu_indv):
+                raise ValueError('Error with padding:', file_name, 'at indexes:', start_idx, end_idx)
+            
 
             # --- Normalisation for each time sample ---
             if individual_normalisation == True:
@@ -232,16 +228,14 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             total_spectra_count += 1
             data_frame = data_frame.append(new_row, ignore_index=True)
 
-            previous_amu = amu_indv; previous_counts = count_indv
-    break 
-# print('Size of the data frame: %.9f Gb' % (sys.getsizeof(data_frame) / 1e9))
-# print('Total number of spectra:', total_spectra_count)
-# print('Number of rows in the data frame:', data_frame.shape[0])
-# print('Number of unique filenames:', len(data_frame['Filename'].unique()))
+print('Size of the data frame: %.9f Gb' % (sys.getsizeof(data_frame) / 1e9))
+print('Total number of spectra:', total_spectra_count)
+print('Number of rows in the data frame:', data_frame.shape[0])
+print('Number of unique filenames:', len(data_frame['Filename'].unique()))
 
-# # --- Save the data ---
-# hdf5_file = 'PDS_EGAMS_H5_files/EGAMS_PDS_Data_AMU;%s-%s_IndvNorm;%s.h5' % (min_amu, max_amu, individual_normalisation)
-# data_frame.to_hdf(hdf5_file, key='EGAMS_PDS_Data', mode='w')
+# --- Save the data ---
+hdf5_file = 'PDS_EGAMS_H5_files/EGAMS_PDS_Data_AMU;%s-%s_IndvNorm;%s.h5' % (min_amu, max_amu, individual_normalisation)
+data_frame.to_hdf(hdf5_file, key='EGAMS_PDS_Data', mode='w')
 
 
 # # --- HTML for viewing --- 
