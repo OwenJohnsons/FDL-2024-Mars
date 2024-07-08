@@ -48,7 +48,7 @@ def array_insert(amu_large, amu_small, counts_small):
 # --- Preamble --- 
 verbose = False
 min_amu = 10; max_amu = 150
-individual_normalisation = True
+individual_normalisation = False
 
 nobelgas_EID = [25117, 25202, 25208, 25219, 25362, 25363, 25495]
 combustion_EID = [25173, 25174, 25175]
@@ -89,6 +89,8 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
 
     if EID not in EGA_eids:
         continue
+    # if EID != 25579: 
+    #     continue
     else:
         smp_loc = QMS_datasum_df.iloc[i]['Sample'].split(' ')[0] # EGM label file only uses first word
         EGA_row = EGA_df[EGA_df['Mars Locations'].str.contains(smp_loc)]
@@ -132,6 +134,8 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             counts = counts / np.max(counts) # Normalise the counts, overall. 
 
         start_idxes = np.where(amu[:-1] > amu[1:])[0].tolist() # Finding the start of each spectrum, by finding where AMU decreases.
+        bin_edges = np.arange(min_amu, max_amu + 2)
+        amu_padded = np.arange(min_amu, max_amu + 1)
 
         if verbose:
             print('=== %s ===' % file_name)
@@ -146,6 +150,7 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
         smart_scanning = False
         amu_placeholder = np.arange(min_amu, max_amu + 1)
         counts_placeholder = np.zeros(len(amu_placeholder))
+        previous_counts = []
 
         for k in range(len(start_idxes)):
             if k == 0: 
@@ -155,39 +160,68 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             else:
                 continue
 
-            count_indv = counts[start_idx:end_idx]; non_norm_counts = count_indv
+            count_indv = counts[start_idx:end_idx] 
             amu_indv = amu[start_idx:end_idx]
-
-            # --- Smart Scanning Adsorbtion --- 
-            
-            if np.max(count_indv) < 0.1*np.max(counts): 
-                amu_padded, counts_complete = array_insert(amu_placeholder, amu_indv, count_indv)
-                summed_counts = counts_segment_padded + counts_complete
-
-                count_indv = summed_counts
-                amu_indv = amu_padded
-                
-            else: 
-                amu_segment_padded, counts_segment_padded = array_insert(amu_placeholder, amu_indv, count_indv)
-
-                count_indv = counts_segment_padded
-                amu_indv = amu_segment_padded
-
-            if len(count_indv) != len(amu_indv):
-                raise ValueError('Error with padding:', file_name, 'at indexes:', start_idx, end_idx)
-            
-
-            # --- Normalisation for each time sample ---
-            if individual_normalisation == True:
-                try: 
-                    count_indv = count_indv / np.max(count_indv) # Normalise the counts for each spectrum.
-                except: 
-                    df = pd.DataFrame({'amu': amu, 'counts': counts}); df.to_csv(file_name[0:-4] + '_error.csv', index=False)
-                    raise ValueError('Error normalising counts for:', file_name, 'at indexes:', start_idx, end_idx)
 
             if len(count_indv) == 0:
                 raise ValueError('No data found for:', file_name, 'at indexes:', start_idx, end_idx)
 
+            if k == 0: 
+                peaks, properties = find_peaks(count_indv, height=0.1)
+                reference_peaks = sorted(zip(peaks, properties['peak_heights']), key=lambda x: x[1], reverse=True)[:5]
+                reference_indices = [peak[0] for peak in reference_peaks]
+                reference_amus = amu_indv[reference_indices]
+
+            # --- Smart Scanning Adsorbtion --- 
+            indv_peaks = find_peaks(count_indv, height=0.1)[0]
+            indv_peaks_amu = amu_indv[indv_peaks]
+
+            if len(set(reference_amus).intersection(set(indv_peaks_amu))) <= 2 and previous_counts != []: # Isolating smart scan samples based on reference peaks.
+                if len(previous_counts) > len(counts_placeholder):
+                   # rebin the data
+                    previous_counts = np.histogram(previous_counts, bins=bin_edges)[0]
+                    counts_indv_padded = np.histogram(count_indv, bins=bin_edges)[0]
+
+                    summed_counts = counts_indv_padded + previous_counts
+                    count_indv = summed_counts
+                    amu_indv = amu_padded
+
+                    addtive_counts = counts_indv_padded
+
+                else: 
+                    count_indv = counts_indv_padded + previous_counts
+                    amu_indv = amu_padded
+
+                    addtive_counts = counts_indv_padded
+
+                smart_scanning = True
+        
+                
+            else: 
+                amu_segment_padded, counts_indv_padded = array_insert(amu_placeholder, amu_indv, count_indv)
+                count_indv = counts_indv_padded
+                amu_indv = amu_segment_padded
+
+
+            if len(count_indv) != len(amu_indv):
+                raise ValueError('Error with padding:', file_name, 'at indexes:', start_idx, end_idx)
+        
+            if np.min(amu_indv) != min_amu or np.max(amu_indv) != max_amu:
+                raise ValueError('Error with AMU range:', file_name, 'at indexes:', start_idx, end_idx)
+
+            non_norm_counts = count_indv.copy()
+           
+
+            # --- Normalisation for each time sample ---
+            if individual_normalisation == True:
+                try: 
+                    count_indv = count_indv / np.max(counts) # Normalise the counts for each spectrum.
+                except: 
+                    df = pd.DataFrame({'amu': amu, 'counts': counts}); df.to_csv(file_name[0:-4] + '_error.csv', index=False)
+                    raise ValueError('Error normalising counts for:', file_name, 'at indexes:', start_idx, end_idx)
+            else: 
+                norm_count = count_indv / np.max(counts) # Normalise the counts, overall.
+            
             peaks = find_peaks(count_indv, height=0.1)[0]
             peaks_values = [count_indv[peak] for peak in peaks]
             spec_n = k
@@ -198,6 +232,11 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
 
             else: 
                 max_peak_amu = amu_indv[np.argmax(peaks_values)]
+
+            if pryro_temp[start_idx:end_idx].mean() < 0:
+                real_temp = False
+            else:
+                real_temp = True
         
             # - Data Dictionary - 
             data_dict = {
@@ -206,7 +245,7 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
                 'pryro_temp': pryro_temp[start_idx:end_idx].tolist(), 
                 'col_temp': col_temp[start_idx:end_idx].tolist(), 
                 'counts': non_norm_counts.tolist(), 
-                'norm_counts': count_indv.tolist()
+                'norm_counts': norm_count.tolist()
             }
             new_row = {
                 'Sample ID': int(QMS_datasum_df.iloc[i]['EID']),  
@@ -221,12 +260,15 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
                 'Peak Values': (peaks_values),  
                 'Max Peak AMU': max_peak_amu,
                 'Spectra Number': spec_n,
-                'Transferred Pyrolysis Temperature': 'N/A', 
+                'Orginial Pyrolysis Temperature': real_temp, 
                 'Blank': 1 if int(QMS_datasum_df.iloc[i]['EID']) in blanks_EID else 0
             }
             
             total_spectra_count += 1
             data_frame = data_frame.append(new_row, ignore_index=True)
+
+            previous_counts = count_indv
+        # break 
 
 print('Size of the data frame: %.9f Gb' % (sys.getsizeof(data_frame) / 1e9))
 print('Total number of spectra:', total_spectra_count)
@@ -237,14 +279,8 @@ print('Number of unique filenames:', len(data_frame['Filename'].unique()))
 hdf5_file = 'PDS_EGAMS_H5_files/EGAMS_PDS_Data_AMU;%s-%s_IndvNorm;%s.h5' % (min_amu, max_amu, individual_normalisation)
 data_frame.to_hdf(hdf5_file, key='EGAMS_PDS_Data', mode='w')
 
-
-# # --- HTML for viewing --- 
-# results_df = pd.read_hdf(hdf5_file, 'EGAMS_PDS_Data')
-# html = results_df.to_html()
-# with open('PDS_EGAMS_PDS_Data.html', 'w') as f:
-#     f.write(html)
-
-# head_results = results_df.head()
-# head_results = head_results.drop(columns=['Data'])
-# df_head_md = head_results.to_markdown()
-# print(df_head_md)
+# --- HTML for viewing --- 
+results_df = pd.read_hdf(hdf5_file, 'EGAMS_PDS_Data')
+html = results_df.to_html()
+with open('PDS_EGAMS_PDS_Data.html', 'w') as f:
+    f.write(html)
