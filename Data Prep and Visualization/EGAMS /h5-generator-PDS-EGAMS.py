@@ -48,7 +48,7 @@ def array_insert(amu_large, amu_small, counts_small):
 # --- Preamble --- 
 verbose = False
 min_amu = 10; max_amu = 150
-individual_normalisation = False
+array_length = max_amu - min_amu 
 
 nobelgas_EID = [25117, 25202, 25208, 25219, 25362, 25363, 25495]
 combustion_EID = [25173, 25174, 25175]
@@ -89,12 +89,10 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
 
     if EID not in EGA_eids:
         continue
-    # if EID != 25579: 
-    #     continue
+
     else:
         smp_loc = QMS_datasum_df.iloc[i]['Sample'].split(' ')[0] # EGM label file only uses first word
         EGA_row = EGA_df[EGA_df['Mars Locations'].str.contains(smp_loc)]
-
 
         if verbose: 
             print('=== %s ===' % i)
@@ -102,9 +100,6 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             print('First word of Sample Location:', smp_loc)
             print(EGA_row['Mars Locations'])
 
-        if smp_loc in ['GC', 'Blank', 'Cal']:
-            print('Skipping...')
-            continue
         else:
             labels = [key for key, value in EGA_row.iloc[0].items() if value == 'X']
             unsure = [key for key, value in EGA_row.iloc[0].items() if value == '~']
@@ -129,28 +124,19 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
         time, amu, pryro_temp, col_temp, counts = np.loadtxt(filepath_idx, unpack=True, skiprows=1, delimiter=',')
         mask = (amu >= min_amu) & (amu <= max_amu)
         time = time[mask]; amu = amu[mask]; pryro_temp = pryro_temp[mask]; col_temp = col_temp[mask]; counts = counts[mask]
+        time = time[~np.isnan(counts)]; amu = amu[~np.isnan(counts)]; pryro_temp = pryro_temp[~np.isnan(counts)]; col_temp = col_temp[~np.isnan(counts)]; counts = counts[~np.isnan(counts)]
         time = time - time[0] # Start time at 0.
-        if individual_normalisation == False:
-            counts = counts / np.max(counts) # Normalise the counts, overall. 
+        max_count = np.max(counts)
 
         start_idxes = np.where(amu[:-1] > amu[1:])[0].tolist() # Finding the start of each spectrum, by finding where AMU decreases.
         bin_edges = np.arange(min_amu, max_amu + 2)
         amu_padded = np.arange(min_amu, max_amu + 1)
 
-        if verbose:
-            print('=== %s ===' % file_name)
-            print('AMU Entries:', len(amu))
-            print('AMU Difference Mode:', stats.mode(np.diff(amu))[0])
-            print('Mode Counts:', stats.mode(np.diff(amu))[1])
-            print('Average difference in AMU:', np.mean(np.diff(amu)))
-
-        if len(amu) == 0: 
-            raise ValueError('No data found for:', file_name)
-        
-        smart_scanning = False
         amu_placeholder = np.arange(min_amu, max_amu + 1)
         counts_placeholder = np.zeros(len(amu_placeholder))
         previous_counts = []
+        iterative_smartscan = 0
+        smartscan_cond = True; first_smartscan = False
 
         for k in range(len(start_idxes)):
             if k == 0: 
@@ -160,7 +146,7 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             else:
                 continue
 
-            count_indv = counts[start_idx:end_idx] 
+            count_indv = counts[start_idx:end_idx]/max_count
             amu_indv = amu[start_idx:end_idx]
 
             if len(count_indv) == 0:
@@ -172,56 +158,41 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
                 reference_indices = [peak[0] for peak in reference_peaks]
                 reference_amus = amu_indv[reference_indices]
 
-            # --- Smart Scanning Adsorbtion --- 
+            # --- Smart Scanning Adsorption ---
             indv_peaks = find_peaks(count_indv, height=0.1)[0]
             indv_peaks_amu = amu_indv[indv_peaks]
 
-            if len(set(reference_amus).intersection(set(indv_peaks_amu))) <= 2 and previous_counts != []: # Isolating smart scan samples based on reference peaks.
-                if len(previous_counts) > len(counts_placeholder):
-                   # rebin the data
-                    previous_counts = np.histogram(previous_counts, bins=bin_edges)[0]
-                    counts_indv_padded = np.histogram(count_indv, bins=bin_edges)[0]
-
-                    summed_counts = counts_indv_padded + previous_counts
-                    count_indv = summed_counts
-                    amu_indv = amu_padded
-
-                    addtive_counts = counts_indv_padded
-
-                else: 
-                    count_indv = counts_indv_padded + previous_counts
-                    amu_indv = amu_padded
-
-                    addtive_counts = counts_indv_padded
-
-                smart_scanning = True
-        
+            # if len(set(reference_amus).intersection(set(indv_peaks_amu))) < 1 and len(amu_indv) != array_length: # - we only care about smart scans that don't sample entire amu range -
+            if  len(amu_indv) < array_length:
+                # - pad with zeros - 
+                smartscan_amu, smartscan_count = array_insert(amu_placeholder, amu_indv, count_indv)
                 
+                # - adding smartscan to previous counts - 
+                count_indv = smartscan_count + resampled_count
+                amu_indv = smartscan_amu
+                smartscan_cond = True; first_smartscan = True
+                   
+   
+            if smartscan_cond: 
+                resampled_amu, resampled_count = array_insert(amu_placeholder, amu_indv, count_indv)
+                smartscan_cond = False
+
+                if first_smartscan:
+                    count_indv = resampled_count + smartscan_count
+                    amu_indv = resampled_amu
+
+                    plt.title('Spectra %s' % k)
+                    plt.plot(resampled_amu, resampled_count, label = 'Resampled')
+                    plt.plot(resampled_amu, smartscan_count, label = 'Smartscan')
+                    plt.legend()
+                    plt.show()
+                    
             else: 
-                amu_segment_padded, counts_indv_padded = array_insert(amu_placeholder, amu_indv, count_indv)
-                count_indv = counts_indv_padded
-                amu_indv = amu_segment_padded
-
-
-            if len(count_indv) != len(amu_indv):
-                raise ValueError('Error with padding:', file_name, 'at indexes:', start_idx, end_idx)
-        
-            if np.min(amu_indv) != min_amu or np.max(amu_indv) != max_amu:
-                raise ValueError('Error with AMU range:', file_name, 'at indexes:', start_idx, end_idx)
-
-            non_norm_counts = count_indv.copy()
-           
-
-            # --- Normalisation for each time sample ---
-            if individual_normalisation == True:
-                try: 
-                    count_indv = count_indv / np.max(counts) # Normalise the counts for each spectrum.
-                except: 
-                    df = pd.DataFrame({'amu': amu, 'counts': counts}); df.to_csv(file_name[0:-4] + '_error.csv', index=False)
-                    raise ValueError('Error normalising counts for:', file_name, 'at indexes:', start_idx, end_idx)
-            else: 
-                norm_count = count_indv / np.max(counts) # Normalise the counts, overall.
+                continue
+                    
             
+        
+            # --- Peak Analysis ---
             peaks = find_peaks(count_indv, height=0.1)[0]
             peaks_values = [count_indv[peak] for peak in peaks]
             spec_n = k
@@ -229,14 +200,25 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             if len(peaks) == 0:
                 if verbose: print('No peaks found for indexes:', start_idx, end_idx)
                 max_peak_amu = 0
-
             else: 
                 max_peak_amu = amu_indv[np.argmax(peaks_values)]
 
+            # --- Pyrolysis Temperature Analysis ---
             if pryro_temp[start_idx:end_idx].mean() < 0:
                 real_temp = False
             else:
                 real_temp = True
+
+            # --- General Statistics ---
+            mean_counts = np.mean(count_indv); std_counts = np.std(count_indv)
+            skewness = stats.skew(count_indv); kurtosis = stats.kurtosis(count_indv)
+
+            stat_dict = {
+                'Mean Counts': mean_counts, 
+                'Std Counts': std_counts, 
+                'Skewness': skewness, 
+                'Kurtosis': kurtosis
+            }
         
             # - Data Dictionary - 
             data_dict = {
@@ -244,8 +226,7 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
                 'amu': amu_indv.tolist(), 
                 'pryro_temp': pryro_temp[start_idx:end_idx].tolist(), 
                 'col_temp': col_temp[start_idx:end_idx].tolist(), 
-                'counts': non_norm_counts.tolist(), 
-                'norm_counts': norm_count.tolist()
+                'counts': count_indv.tolist()
             }
             new_row = {
                 'Sample ID': int(QMS_datasum_df.iloc[i]['EID']),  
@@ -254,6 +235,7 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
                 'Description': QMS_datasum_df.iloc[i]['DESCRIPTION'],
                 'Filename': file_name,
                 'Data': (data_dict),  
+                'Statistics': (stat_dict),
                 'Labels': (labels_dict),  
                 'Unsure': (unsure_dict),  
                 'Peak Index': (peaks.tolist()),  
@@ -266,9 +248,7 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             
             total_spectra_count += 1
             data_frame = data_frame.append(new_row, ignore_index=True)
-
-            previous_counts = count_indv
-        # break 
+        break 
 
 print('Size of the data frame: %.9f Gb' % (sys.getsizeof(data_frame) / 1e9))
 print('Total number of spectra:', total_spectra_count)
@@ -276,7 +256,7 @@ print('Number of rows in the data frame:', data_frame.shape[0])
 print('Number of unique filenames:', len(data_frame['Filename'].unique()))
 
 # --- Save the data ---
-hdf5_file = 'PDS_EGAMS_H5_files/EGAMS_PDS_Data_AMU;%s-%s_IndvNorm;%s.h5' % (min_amu, max_amu, individual_normalisation)
+hdf5_file = 'PDS_EGAMS_H5_files/EGAMS_PDS_Data_AMU;%s-%s_IndvNorm;%s.h5' % (min_amu, max_amu, 'Final')
 data_frame.to_hdf(hdf5_file, key='EGAMS_PDS_Data', mode='w')
 
 # --- HTML for viewing --- 
