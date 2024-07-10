@@ -82,6 +82,7 @@ mars_labels = ['carbonate', 'chloride', 'oxidized organic carbon', 'oxychlorine'
 data_frame = pd.DataFrame()
 total_spectra_count = 0 
 c = 0; u = 0
+skip_cond = False
 
 for i in tqdm(range(QMS_datasum_df.shape[0])):
 
@@ -136,7 +137,8 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
         counts_placeholder = np.zeros(len(amu_placeholder))
         previous_counts = []
         iterative_smartscan = 0
-        smartscan_cond = True; first_smartscan = False
+        smartscan_counter = 0
+        smartscan_cond = False
 
         for k in range(len(start_idxes)):
             if k == 0: 
@@ -162,35 +164,38 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             indv_peaks = find_peaks(count_indv, height=0.1)[0]
             indv_peaks_amu = amu_indv[indv_peaks]
 
-            # if len(set(reference_amus).intersection(set(indv_peaks_amu))) < 1 and len(amu_indv) != array_length: # - we only care about smart scans that don't sample entire amu range -
-            if  len(amu_indv) < array_length:
+            if len(amu_indv) != array_length:
                 # - pad with zeros - 
-                smartscan_amu, smartscan_count = array_insert(amu_placeholder, amu_indv, count_indv)
+                if len(amu_indv) < array_length:
+                    # - rebin smart scan -
+                    min_amu_indv = int(min(amu_indv)); max_amu_indv = int(max(amu_indv))
+                    smartscan_amu, smartscan_counts = array_insert(amu_placeholder, amu_indv, count_indv)
+
+                    if np.max(smartscan_counts) > 0.1: 
+
+                        cut_start_idx = np.where(smartscan_amu == min_amu_indv)[0][0]
+                        cut_end_idx = np.where(smartscan_amu == max_amu_indv)[0][0] + 1
+
+                        small_counts = smartscan_counts[cut_start_idx:cut_end_idx]
+                    
+                        reference_counts[cut_start_idx:cut_end_idx] = small_counts
+                        count_indv = reference_counts; amu_indv = amu_padded
+
+                        smartscan_cond = True; skip_cond = False
+                    else: 
+                        skip_cond = True
+
+                else: 
+                    continue # - high bandwidth smart scan - 
                 
-                # - adding smartscan to previous counts - 
-                count_indv = smartscan_count + resampled_count
-                amu_indv = smartscan_amu
-                smartscan_cond = True; first_smartscan = True
-                   
-   
-            if smartscan_cond: 
-                resampled_amu, resampled_count = array_insert(amu_placeholder, amu_indv, count_indv)
-                smartscan_cond = False
 
-                if first_smartscan:
-                    count_indv = resampled_count + smartscan_count
-                    amu_indv = resampled_amu
+            else:
+                reference_amu, reference_counts  = array_insert(amu_padded, amu_indv, count_indv)
+                if smartscan_cond:
+                    reference_counts[cut_start_idx:cut_end_idx] = small_counts
+                    count_indv = reference_counts; amu_indv = amu_padded
+                    # smartscan_cond = False
 
-                    plt.title('Spectra %s' % k)
-                    plt.plot(resampled_amu, resampled_count, label = 'Resampled')
-                    plt.plot(resampled_amu, smartscan_count, label = 'Smartscan')
-                    plt.legend()
-                    plt.show()
-                    
-            else: 
-                continue
-                    
-            
         
             # --- Peak Analysis ---
             peaks = find_peaks(count_indv, height=0.1)[0]
@@ -247,7 +252,10 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
             }
             
             total_spectra_count += 1
-            data_frame = data_frame.append(new_row, ignore_index=True)
+            if skip_cond:
+                continue
+            else: 
+                data_frame = data_frame.append(new_row, ignore_index=True)
         break 
 
 print('Size of the data frame: %.9f Gb' % (sys.getsizeof(data_frame) / 1e9))
