@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 import sys 
 from scipy import stats
+from scipy.interpolate import griddata
+import os 
 
 warnings.filterwarnings("ignore", category=FutureWarning, message="The frame.append method is deprecated")
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered in divide")
@@ -43,6 +45,14 @@ def array_insert(amu_large, amu_small, counts_small):
     counts_complete[indices] = counts_small
 
     return amu_complete, counts_complete
+
+# --- make the directory ---
+if not os.path.exists('arushi'):
+    os.makedirs('arushi')
+
+else: 
+    for file in os.listdir('arushi'):
+        os.remove(f'arushi/{file}') 
 
 
 # --- Preamble --- 
@@ -123,7 +133,7 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
 
         # - load the data - 
         time, amu, pryro_temp, col_temp, counts = np.loadtxt(filepath_idx, unpack=True, skiprows=1, delimiter=',')
-        mask = (amu >= min_amu) & (amu <= max_amu)
+        mask = (amu >= min_amu) & (amu <= 151)
         time = time[mask]; amu = amu[mask]; pryro_temp = pryro_temp[mask]; col_temp = col_temp[mask]; counts = counts[mask]
         time = time[~np.isnan(counts)]; amu = amu[~np.isnan(counts)]; pryro_temp = pryro_temp[~np.isnan(counts)]; col_temp = col_temp[~np.isnan(counts)]; counts = counts[~np.isnan(counts)]
         time = time - time[0] # Start time at 0.
@@ -131,14 +141,12 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
 
         start_idxes = np.where(amu[:-1] > amu[1:])[0].tolist() # Finding the start of each spectrum, by finding where AMU decreases.
         bin_edges = np.arange(min_amu, max_amu + 2)
-        amu_padded = np.arange(min_amu, max_amu + 1)
 
         amu_placeholder = np.arange(min_amu, max_amu + 1)
         counts_placeholder = np.zeros(len(amu_placeholder))
-        previous_counts = []
-        iterative_smartscan = 0
-        smartscan_counter = 0
         smartscan_cond = False
+
+        count_1 = 0; count_2 = 0; count_3 = 0 
 
         for k in range(len(start_idxes)):
             if k == 0: 
@@ -161,42 +169,39 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
                 reference_amus = amu_indv[reference_indices]
 
             # --- Smart Scanning Adsorption ---
-            indv_peaks = find_peaks(count_indv, height=0.1)[0]
-            indv_peaks_amu = amu_indv[indv_peaks]
+            start_amu = amu_indv[0]; end_amu = amu_indv[-1] # - min and max AMU values of a specific spectrum
 
-            if len(amu_indv) != array_length:
-                # - pad with zeros - 
-                if len(amu_indv) < array_length:
-                    # - rebin smart scan -
-                    min_amu_indv = int(min(amu_indv)); max_amu_indv = int(max(amu_indv))
-                    smartscan_amu, smartscan_counts = array_insert(amu_placeholder, amu_indv, count_indv)
+            if int(start_amu) != min_amu or int(end_amu) < 140 or len(amu_indv) < array_length: # - subset smart scan
+                smartscan_amu, smartscan_counts = array_insert(amu_placeholder, amu_indv, count_indv) # - pads with zeros for missing AMU values
+                interpolated_counts = griddata(smartscan_amu, smartscan_counts, amu_placeholder, method='nearest') # - rebins via interpolation 
 
-                    if np.max(smartscan_counts) > 0.1: 
+                cut_start_idx = np.where(amu_placeholder == np.min(amu_indv))[0][0] # - finds the indexes where the smart scanning occurs. 
+                cut_end_idx = np.where(amu_placeholder == np.max(amu_indv))[0][0] + 1 
 
-                        cut_start_idx = np.where(smartscan_amu == min_amu_indv)[0][0]
-                        cut_end_idx = np.where(smartscan_amu == max_amu_indv)[0][0] + 1
+                insertion_slice = interpolated_counts[cut_start_idx:cut_end_idx]
+                if np.max(smartscan_counts) > 0.2: 
+                    plt.plot(smartscan_amu, smartscan_counts)
+                    plt.savefig(f'arushi/{count_1}.png')
+                    plt.close()
+                count_1 += 1
 
-                        small_counts = smartscan_counts[cut_start_idx:cut_end_idx]
-                    
-                        reference_counts[cut_start_idx:cut_end_idx] = small_counts
-                        count_indv = reference_counts; amu_indv = amu_padded
 
-                        smartscan_cond = True; skip_cond = False
-                    else: 
-                        skip_cond = True
+            elif (np.diff(amu_indv)[0] == 1 and (len(amu_indv) > 140) and (len(amu_indv) < 160) ): # - normal scan
+                reference_interpolated_counts = griddata(amu_indv, count_indv, amu_placeholder, method='nearest')
+                reference_interpolated_counts[cut_start_idx:cut_end_idx] = insertion_slice
+                reference_amus = amu_placeholder; reference_counts = reference_interpolated_counts
+                plt.plot(amu_indv, count_indv)
+                count_2 += 1 
 
-                else: 
-                    continue # - high bandwidth smart scan - 
-                
+            else: # high def scan TODO never 
+                count_3 += 1
+                continue
 
-            else:
-                reference_amu, reference_counts  = array_insert(amu_padded, amu_indv, count_indv)
-                if smartscan_cond:
-                    reference_counts[cut_start_idx:cut_end_idx] = small_counts
-                    count_indv = reference_counts; amu_indv = amu_padded
-                    # smartscan_cond = False
+            
+           
+            count_indv = reference_counts; amu_indv = reference_amus
+     
 
-        
             # --- Peak Analysis ---
             peaks = find_peaks(count_indv, height=0.1)[0]
             peaks_values = [count_indv[peak] for peak in peaks]
@@ -256,12 +261,20 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
                 continue
             else: 
                 data_frame = data_frame.append(new_row, ignore_index=True)
+
+            previous_counts = count_indv
         break 
 
-print('Size of the data frame: %.9f Gb' % (sys.getsizeof(data_frame) / 1e9))
-print('Total number of spectra:', total_spectra_count)
-print('Number of rows in the data frame:', data_frame.shape[0])
-print('Number of unique filenames:', len(data_frame['Filename'].unique()))
+print('Number of Smart Scans:', count_1)
+print('Number of Normal Scans:', count_2)
+print('Number of High Def Scans:', count_3)
+print('Total number of spectra:', total_spectra_count)    
+      
+
+# print('Size of the data frame: %.9f Gb' % (sys.getsizeof(data_frame) / 1e9))
+# print('Total number of spectra:', total_spectra_count)
+# print('Number of rows in the data frame:', data_frame.shape[0])
+# print('Number of unique filenames:', len(data_frame['Filename'].unique()))
 
 # --- Save the data ---
 hdf5_file = 'PDS_EGAMS_H5_files/EGAMS_PDS_Data_AMU;%s-%s_IndvNorm;%s.h5' % (min_amu, max_amu, 'Final')
@@ -272,3 +285,4 @@ results_df = pd.read_hdf(hdf5_file, 'EGAMS_PDS_Data')
 html = results_df.to_html()
 with open('PDS_EGAMS_PDS_Data.html', 'w') as f:
     f.write(html)
+# %%
