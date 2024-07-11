@@ -1,6 +1,6 @@
 #%%
 '''
-Author: Owen A. Johnson (ojohnson@tcd.ie)
+Author: Owen A. Johnson (ojohnson@tcd.ie) & Arushi Saxena
 Last Major Update: 2024-06-28
 Code Purpose: To generate a HDF5 file from the PDS data intaking raw .txt files from the NASA Planetary Data System (PDS) for the Curosity Rover and then cross referencing the data with the labels provided by the EGAMS workshop carried out by Victoria Da Poian (GSFC) and Eric Lyness (GSFC).
 '''
@@ -13,37 +13,12 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 import sys 
 from scipy import stats
+from scipy.interpolate import griddata
+import os 
+import scienceplots; plt.style.use(['science', 'ieee'])
 
 warnings.filterwarnings("ignore", category=FutureWarning, message="The frame.append method is deprecated")
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered in divide")
-
-# --- Functions -- 
-
-def array_insert(amu_large, amu_small, counts_small):
-    """
-    Inserts missing values from amu_large into amu_small and adds corresponding zero counts in counts_small.
-
-    Parameters:
-    amu_large (numpy array): The larger array with all possible x values.
-    amu_small (numpy array): The smaller array with some missing x values.
-    counts_small (numpy array): The y values corresponding to amu_small.
-
-    Returns:
-    amu_complete (numpy array): The complete x array with all values from amu_large.
-    counts_complete (numpy array): The y array with added zeros for the missing x values.
-    """
-    
-    missing_values = np.setdiff1d(amu_large, amu_small) # Find missing values in the smaller array
-    amu_complete = np.append(amu_small, missing_values)
-
-    counts_complete = np.zeros(len(amu_complete)) # Create an array of zeros for the missing values
-
-    amu_complete = np.sort(amu_complete)
-    indices = np.searchsorted(amu_complete, amu_small)
-    counts_complete[indices] = counts_small
-
-    return amu_complete, counts_complete
-
 
 # --- Preamble --- 
 verbose = False
@@ -81,7 +56,6 @@ mars_labels = ['carbonate', 'chloride', 'oxidized organic carbon', 'oxychlorine'
 # --- Data Collation ---
 data_frame = pd.DataFrame()
 total_spectra_count = 0 
-c = 0; u = 0
 skip_cond = False
 
 for i in tqdm(range(QMS_datasum_df.shape[0])):
@@ -123,80 +97,72 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
 
         # - load the data - 
         time, amu, pryro_temp, col_temp, counts = np.loadtxt(filepath_idx, unpack=True, skiprows=1, delimiter=',')
-        mask = (amu >= min_amu) & (amu <= max_amu)
+        mask = (amu >= min_amu) & (amu <= 151)
         time = time[mask]; amu = amu[mask]; pryro_temp = pryro_temp[mask]; col_temp = col_temp[mask]; counts = counts[mask]
         time = time[~np.isnan(counts)]; amu = amu[~np.isnan(counts)]; pryro_temp = pryro_temp[~np.isnan(counts)]; col_temp = col_temp[~np.isnan(counts)]; counts = counts[~np.isnan(counts)]
         time = time - time[0] # Start time at 0.
         max_count = np.max(counts)
 
+
         start_idxes = np.where(amu[:-1] > amu[1:])[0].tolist() # Finding the start of each spectrum, by finding where AMU decreases.
+        # add the end to the start_idxes
+        start_idxes = [0] + start_idxes + [len(amu)] # Adding the start and end indexes to the list.
+        print(start_idxes)
+        # break 
         bin_edges = np.arange(min_amu, max_amu + 2)
-        amu_padded = np.arange(min_amu, max_amu + 1)
 
         amu_placeholder = np.arange(min_amu, max_amu + 1)
         counts_placeholder = np.zeros(len(amu_placeholder))
-        previous_counts = []
-        iterative_smartscan = 0
-        smartscan_counter = 0
         smartscan_cond = False
 
-        for k in range(len(start_idxes)):
-            if k == 0: 
-                start_idx = 0; end_idx = start_idxes[k]
-            if k + 1 < len(start_idxes):
-                start_idx = start_idxes[k] + 1; end_idx = start_idxes[k+1]
-            else:
-                continue
+        count_1 = 0; count_2 = 0; count_3 = 0 
+        normal_scan = 0
+
+        for k in range(len(start_idxes)-1):
+      
+            start_idx = start_idxes[k] + 1; end_idx = start_idxes[k+1]
+    
 
             count_indv = counts[start_idx:end_idx]/max_count
             amu_indv = amu[start_idx:end_idx]
+            if len(count_indv) < 3:
+                continue
 
             if len(count_indv) == 0:
                 raise ValueError('No data found for:', file_name, 'at indexes:', start_idx, end_idx)
 
-            if k == 0: 
-                peaks, properties = find_peaks(count_indv, height=0.1)
-                reference_peaks = sorted(zip(peaks, properties['peak_heights']), key=lambda x: x[1], reverse=True)[:5]
-                reference_indices = [peak[0] for peak in reference_peaks]
-                reference_amus = amu_indv[reference_indices]
-
             # --- Smart Scanning Adsorption ---
-            indv_peaks = find_peaks(count_indv, height=0.1)[0]
-            indv_peaks_amu = amu_indv[indv_peaks]
+            start_amu = amu_indv[0]; end_amu = amu_indv[-1] # - min and max AMU values of a specific spectrum
 
-            if len(amu_indv) != array_length:
-                # - pad with zeros - 
-                if len(amu_indv) < array_length:
-                    # - rebin smart scan -
-                    min_amu_indv = int(min(amu_indv)); max_amu_indv = int(max(amu_indv))
-                    smartscan_amu, smartscan_counts = array_insert(amu_placeholder, amu_indv, count_indv)
+            start_spectra_value = min(amu_indv); end_spectra_value = max(amu_indv)
+            interpolate_amu     = np.arange(start_spectra_value, end_spectra_value + 1) # - interpolated AMU values
+            interpolated_counts = griddata(amu_indv, count_indv, interpolate_amu, method='nearest') # - interpolated counts
 
-                    if np.max(smartscan_counts) > 0.1: 
+            smartscan_cond = len(interpolated_counts) < 140
 
-                        cut_start_idx = np.where(smartscan_amu == min_amu_indv)[0][0]
-                        cut_end_idx = np.where(smartscan_amu == max_amu_indv)[0][0] + 1
-
-                        small_counts = smartscan_counts[cut_start_idx:cut_end_idx]
-                    
-                        reference_counts[cut_start_idx:cut_end_idx] = small_counts
-                        count_indv = reference_counts; amu_indv = amu_padded
-
-                        smartscan_cond = True; skip_cond = False
-                    else: 
-                        skip_cond = True
-
-                else: 
-                    continue # - high bandwidth smart scan - 
-                
-
+            if(not smartscan_cond):
+                reference_amus = interpolate_amu; reference_counts = interpolated_counts
+                smart_scan = 0
+                normal_scan += 1
             else:
-                reference_amu, reference_counts  = array_insert(amu_padded, amu_indv, count_indv)
-                if smartscan_cond:
-                    reference_counts[cut_start_idx:cut_end_idx] = small_counts
-                    count_indv = reference_counts; amu_indv = amu_padded
-                    # smartscan_cond = False
+                cut_start_idx = np.where(amu_placeholder == np.ceil(start_spectra_value))[0][0] 
+                cut_end_idx = np.where(amu_placeholder == np.ceil(end_spectra_value))[0][0] + 1
+                reference_counts[cut_start_idx:cut_end_idx] =  interpolated_counts
+                smart_scan += 1
+                normal_scan = 0
 
-        
+            if ((smart_scan > 1 or normal_scan > 1)):
+                count_indv = reference_counts; amu_indv = reference_amus
+                eid = int(QMS_datasum_df.iloc[i]['EID'])
+                
+                # if os.path.exists(f"arushi/{eid}/{k}.png"):
+                #     continue
+                    
+                # plt.plot(amu_indv, count_indv) 
+                # plt.ylim(0, 1); plt.xlim(10, 150)
+                # plt.savefig(f'arushi/{eid}/{k}.png')
+                # plt.close()
+     
             # --- Peak Analysis ---
             peaks = find_peaks(count_indv, height=0.1)[0]
             peaks_values = [count_indv[peak] for peak in peaks]
@@ -256,7 +222,10 @@ for i in tqdm(range(QMS_datasum_df.shape[0])):
                 continue
             else: 
                 data_frame = data_frame.append(new_row, ignore_index=True)
-        break 
+
+            previous_counts = count_indv
+        # break 
+      
 
 print('Size of the data frame: %.9f Gb' % (sys.getsizeof(data_frame) / 1e9))
 print('Total number of spectra:', total_spectra_count)
