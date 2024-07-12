@@ -1,7 +1,7 @@
 '''
 Author: Owen A. Johnson (ojohnson@tcd.ie)
 Last Major Update: 2024-06-28
-Code Purpose: 
+Code Purpose: This code plots the mass spectra of the PDS EGAMS data with labels and metadata intended for gif creation. It also plots the individual frames of the MP4 files if needed. Note this is not the most effcient way to generate MP4 files, please see EGAMS_mp4_gen.py for a more effcient method. 
 '''
 import os
 import pandas as pd
@@ -12,7 +12,6 @@ import scienceplots
 plt.style.use(['science', 'ieee'])
 from tqdm import tqdm
 import re
-import imageio
 from glob import glob
 import logging
 
@@ -23,12 +22,18 @@ logger = logging.getLogger(__name__)
 verbose = False
 
 def extract_number(filename):
+    '''
+    Extracts the number from the filename. 
+    '''
     match = re.search(r'(\d+)\.png', filename)
     if match:
         return int(match.group(1))
     return 0
 
 def flatten_data(indv_df):
+    '''
+    Concatenates the data from the individual rows in the dataframe for a single run. 
+    '''
     flat_overall_time = np.concatenate(indv_df['flat_overall_time'].values)
     flat_overall_pyro = np.concatenate(indv_df['flat_overall_pyro'].values)
     flat_overall_counts = np.concatenate(indv_df['flat_overall_counts'].values)
@@ -36,17 +41,35 @@ def flatten_data(indv_df):
     return flat_overall_time, flat_overall_pyro, flat_overall_counts, flat_overall_amu
 
 def create_plot(data, eid, sample, description, labels, unsure, peaks, spectra_total, i, flat_overall_time, flat_overall_pyro):
-    time = data['time']
-    amu = data['amu']
-    counts = data['counts']
-    pyro_temp = data['pryro_temp']
+    '''
+    INPUTS:
+    -------
+        data: dictionary containing the mass spectra data
+        eid: Experiment ID
+        sample: Sample name
+        description: Description of the sample
+        labels: List of labels
+        unsure: List of unsure labels
+        peaks: List of peak indexes
+        spectra_total: Total number of spectra in the dataset
+        i: Index of the current spectrum
+        flat_overall_time: Flattened time data
+        flat_overall_pyro: Flattened pyrolysis temperature data
 
+    OUTPUTS:
+    --------
+        figure 1: saves a figure with the mass spectra, pyrolysis temperature data and metadata.
+    '''
+
+    counts = data['counts']
+
+    # --- Figure 1 ---
     fig = plt.figure(constrained_layout=False, figsize=(18, 3))
     gs = fig.add_gridspec(1, 3)
 
-    ax1 = fig.add_subplot(gs[0, 0])
+    ax1 = fig.add_subplot(gs[0, 0]) 
     amu_space = np.linspace(10, 150, len(counts))
-    ax1.plot(amu_space, counts, color='blue')  # overall normalization
+    ax1.plot(amu_space, counts, color='blue') 
     ax1.set_xlabel('Atomic Mass Unit [AMU]')
     ax1.set_ylabel('Max Peak Value')
     ax1.set_xlim(10, 150)
@@ -77,6 +100,9 @@ def create_plot(data, eid, sample, description, labels, unsure, peaks, spectra_t
     return fig, ax1, ax2
 
 def save_plot(fig, output_dir, eid, i):
+    '''
+    Saves the figure to the output directory.
+    '''
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     fig.savefig(f'{output_dir}/{eid}_{i}.png', dpi=200, bbox_inches='tight')
@@ -99,7 +125,7 @@ def main():
         indv_df = df[df['Filename'] == file]  # get the individual file data
         eid = indv_df['Sample ID'].iloc[0]  # get the EID of the file
 
-        # Flatten lists once for all rows in indv_df
+        # Flatten lists once for all rows for a indivdual run
         flat_overall_time, flat_overall_pyro, flat_overall_counts, flat_overall_amu = flatten_data(indv_df)
 
         if verbose:
@@ -108,9 +134,6 @@ def main():
             logger.debug(flat_overall_pyro.shape)
             logger.debug(flat_overall_counts.shape)
             logger.debug(flat_overall_amu.shape)
-
-        overall_peaks_idxs = indv_df['Max Peak AMU']
-        maxpeaks_time_points = [time[0] for time in indv_df['flat_overall_time']]
 
         data = indv_df.iloc[0]['Data']
 
@@ -131,7 +154,6 @@ def main():
                 counts = data['counts']
                 amu_space = np.linspace(10, 150, len(counts))
 
-                # --- Data Manipulation ---
                 fig, ax1, ax2 = create_plot(data, eid, sample, description, labels, unsure, peaks, spectra_total, i, flat_overall_time, flat_overall_pyro)
 
                 output_dir = f'EGAMS-Mars-Mass-Spec-Gifs/{eid}'
