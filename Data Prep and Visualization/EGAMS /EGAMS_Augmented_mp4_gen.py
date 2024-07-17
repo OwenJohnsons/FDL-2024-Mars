@@ -32,7 +32,7 @@ def update(i, df_aug, time_ind, ax):
 def process_file(h5):
     try:
         df_aug = pd.read_hdf(h5)
-        output_path = h5.replace('.h5', '.mp4')
+        output_path = h5.replace('.hdf', '.mp4')
 
         # Get the unique time indices
         time_ind = df_aug["time"].unique()
@@ -50,7 +50,7 @@ def process_file(h5):
 
 def main():
     # Load the data
-    h5_fnames = glob('./samurai_data_base/*/*.h5')
+    h5_fnames = glob('./samurai_data_base/*/S*.hdf')
     print('Number of h5 files:', len(h5_fnames))
 
     # Parallelize the processing of files with a progress bar
