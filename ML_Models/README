@@ -1,6 +1,24 @@
 This repo houses all ML model pipelines, with each model corresponding to an individual directory based on the base model architecture. 
 
-The directory "data_split_EID" houses two files that dictate which samples (identified by their EID) 
+The directory "data_split_EID" houses two files that dictate which samples (identified by their EID) belong in the train and test sets. 
+This will be used to extract corresponding labels for any training samples that are pulled from the main data tree.
 
 Within each model directory, the following codes define the full pipeline:
-1. training_config.py : all simulation parameters (model architecture, hyperparameters, dataloader batch sizes, etc) exist here, and can easily be changed. We also define necessary model saving paths here
+1. training_config.py : all simulation parameters (model architecture, hyperparameters, dataloader batch sizes, etc) exist here, 
+                        and can easily be changed. We also define necessary model saving paths here
+
+2. model.py : houses the base model architecture, should not be changed unless necessary
+
+3. get_data.py: houses the custom dataset class that will be passed into the DataLoader object when training. Also houses the  
+                collate_fn definition, passed as an **arg to DataLoader, to provide necessary zero padding
+
+4. main.py: houses the main training/val loop, necessary logging functionality to Tensorboard event files. This file will generate a model save folder 
+            within the "trained_models" subdirectory, and the filename will be the date and timestamp of when the script was run. This model save folder
+            will house the best accuracy model (state_dict() in .pt format) for the defined run. Corresponding Tensorboard logs will be generated in a separate
+            "runs" folder with the same date and timestamp as the model folder
+
+5. save_py_as_txt.py: simple helper function that converts the current training_config.py to a txt file to save in the model save folder
+
+6. evaluate_model.py: after main.py has completed running and the best accuracy model is saved, we run the model evaluation script that computes the multiclass
+                      confusion matrix. Generated figures will be saved to the "model_eval" subdirectory, in a generated folder with the same filename as the 
+                      model date and timestamp
