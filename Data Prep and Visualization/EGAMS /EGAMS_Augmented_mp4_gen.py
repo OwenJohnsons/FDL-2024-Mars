@@ -49,7 +49,7 @@ def process_file(h5):
     start_time = time.time()
     try:
         df_aug = pd.read_hdf(h5)
-        output_path = h5.replace('.h5', '.mp4')
+        output_path = h5.replace('.hdf', '.mp4')
 
         if os.path.exists(output_path):
             end_time = time.time()
@@ -81,7 +81,7 @@ def process_file(h5):
 
 def main():
     # Load the data
-    h5_fnames = glob('./samurai_data_base/*/S*.h5')
+    h5_fnames = glob('./samurai_data_base/*/S*.hdf')
     logger.info('Number of h5 files: %d' % len(h5_fnames))
 
     # Parallelize the processing of files with a progress bar
