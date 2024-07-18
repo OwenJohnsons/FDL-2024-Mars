@@ -20,8 +20,8 @@ shuffle_train = True #DO NOT CHANGE
 shuffle_test = False #DO NOT CHANGE
 
 #------------------------------------------------------------------------------------
-model_save_dir = 'C:/Users/Kanak Parmar/Desktop/FDL 2024/Mars Data/Codes/ML_pipelines/RNN/trained_models'
-model_eval_fig_dir = 'C:/Users/Kanak Parmar/Desktop/FDL 2024/Mars Data/Codes/ML_pipelines/RNN/model_eval'
+model_save_dir = 'C:/Users/Kanak Parmar/Desktop/FDL 2024/Mars Data/Codes/ML_pipelines/LSTM/trained_models'
+model_eval_fig_dir = 'C:/Users/Kanak Parmar/Desktop/FDL 2024/Mars Data/Codes/ML_pipelines/LSTM/model_eval'
 
 # model params
 lstm_features = 2 #DO NOT CHANGE (pleas!)
