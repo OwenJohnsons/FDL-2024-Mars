@@ -1,0 +1,7 @@
+*.mp4
+*.h5
+*.hdf
+*.log
+*.png
+*.jpg
+.DS_Store
