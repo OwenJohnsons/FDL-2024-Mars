@@ -1,0 +1,6 @@
+This repo houses all ML model pipelines, with each model corresponding to an individual directory based on the base model architecture. 
+
+The directory "data_split_EID" houses two files that dictate which samples (identified by their EID) 
+
+Within each model directory, the following codes define the full pipeline:
+1. training_config.py : all simulation parameters (model architecture, hyperparameters, dataloader batch sizes, etc) exist here, and can easily be changed. We also define necessary model saving paths here
