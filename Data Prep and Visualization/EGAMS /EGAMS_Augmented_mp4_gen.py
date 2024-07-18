@@ -11,31 +11,23 @@ from glob import glob
 import scienceplots
 import pandas as pd
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from tqdm import tqdm
 import time
 import logging
 import os
 
 # Configure logging
-log_file = 'EGAMS_Augment_MP4_generation_%s.log' % time.strftime('%Y-%m-%d_%H-%M-%S')
-error_log_file = 'EGAMS_Augment_MP4_generation_errors_%s.log' % time.strftime('%Y-%m-%d_%H-%M-%S')
+log_file = f'./logs/EGAMS_Augment_MP4_generation_{time.strftime("%Y-%m-%d_%H-%M-%S")}.log'
+error_log_file = f'./logs/EGAMS_Augment_MP4_generation_errors_{time.strftime("%Y-%m-%d_%H-%M-%S")}.log'
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s',
+                    handlers=[logging.FileHandler(log_file), logging.FileHandler(error_log_file)])
+
 logger = logging.getLogger()
 
-# General log handler
-file_handler = logging.FileHandler(log_file)
-file_handler.setLevel(logging.INFO)
-file_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(message)s'))
-logger.addHandler(file_handler)
-
-# Error log handler
-error_handler = logging.FileHandler(error_log_file)
-error_handler.setLevel(logging.ERROR)
-error_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(message)s'))
-logger.addHandler(error_handler)
-
 plt.style.use(['science', 'ieee', 'no-latex'])
+
+# Suppress specific matplotlib messages
+logging.getLogger('matplotlib.animation').setLevel(logging.WARNING)
 
 # Function to update the plot
 def update(i, df_aug, time_ind, ax):
@@ -52,54 +44,47 @@ def process_file(h5):
         output_path = h5.replace('.hdf', '.mp4')
 
         if os.path.exists(output_path):
-            end_time = time.time()
-            process_time = end_time - start_time
-            logger.info(f"File {output_path} already exists, processing time: {process_time:.2f} seconds")
+            process_time = time.time() - start_time
             return f"File {output_path} already exists, processing time: {process_time:.2f} seconds"
         
-        else: 
-            # Get the unique time indices
-            time_ind = df_aug["time"].unique()
+        time_ind = df_aug["time"].unique()
 
-            # Set up the figure and axis
-            fig, ax = plt.subplots(figsize=(4, 3), constrained_layout=True, dpi=200)  # Owen standard
-
-            ani = FuncAnimation(fig, update, fargs=(df_aug, time_ind, ax), frames=np.arange(len(time_ind)), repeat=False)
-            ani.save(output_path, writer=FFMpegWriter(fps=24))
-
-            plt.close(fig)
+        fig, ax = plt.subplots(figsize=(4, 3), constrained_layout=True, dpi=200)  # Owen standard
+        ani = FuncAnimation(fig, update, fargs=(df_aug, time_ind, ax), frames=np.arange(len(time_ind)), repeat=False)
+        ani.save(output_path, writer=FFMpegWriter(fps=24, metadata={'artist':'Me'}))
+        plt.close(fig)
     except Exception as e:
         logger.error(f"Error processing file {h5}: {e}")
-        end_time = time.time()
-        process_time = end_time - start_time
+        process_time = time.time() - start_time
         return f"Error processing file {h5}: {e}, processing time: {process_time:.2f} seconds"
 
-    end_time = time.time()
-    process_time = end_time - start_time
+    process_time = time.time() - start_time
     logger.info(f"Processed file {output_path}, processing time: {process_time:.2f} seconds")
     return f"Processed file {output_path}, processing time: {process_time:.2f} seconds"
 
 def main():
-    # Load the data
     h5_fnames = glob('./samurai_data_base/*/S*.hdf')
-    logger.info('Number of h5 files: %d' % len(h5_fnames))
+    logger.info('Number of h5 files: %d', len(h5_fnames))
 
-    # Parallelize the processing of files with a progress bar
     start_time = time.time()
 
     with ProcessPoolExecutor() as executor:
         num_workers = executor._max_workers
         logger.info(f"Running with {num_workers} parallel processes")
         futures = {executor.submit(process_file, h5): h5 for h5 in h5_fnames}
-        for future in tqdm(as_completed(futures), total=len(futures)):
+        total_files = len(futures)
+        completed_files = 0
+        
+        for future in as_completed(futures):
             result = future.result()
             logger.info(result)
+            completed_files += 1
+            percentage_completed = (completed_files / total_files) * 100
+            print(f'Completed: {percentage_completed:.2f}%')
             if future.exception() is not None:
                 logger.error(f"Exception: {future.exception()}")
 
-    end_time = time.time()
-    execution_time = end_time - start_time
-
+    execution_time = time.time() - start_time
     logger.info(f"Total execution time: {execution_time:.2f} seconds")
 
 if __name__ == '__main__':
