@@ -71,8 +71,8 @@ def main():
 
     start_time = time.time()
 
-    # Reduce the number of workers to limit memory usage
-    num_workers = min(4, len(h5_fnames))  # Adjust the number of workers as needed
+    # Use all available cores
+    num_workers = os.cpu_count()
     print('Number of cores being used:', num_workers)
 
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
