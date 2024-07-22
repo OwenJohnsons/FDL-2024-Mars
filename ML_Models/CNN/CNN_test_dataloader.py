@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from dataset import VideoDataset
+from CNN_dataset import VideoDataset
 from glob import glob
 
 def test_dataloader(video_path, num_samples=5):
