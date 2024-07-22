@@ -117,7 +117,7 @@ for epoch in range(num_epochs):
             
             if j % data_record_interval == 0:
                # compute batch accuracy
-                batch_accuracy_val = (torch.softmax(pred_train, dim=0).argmax(dim=0) == label_train).sum().float() / float( label_train.size(0) )
+                batch_accuracy_val = (torch.softmax(pred_val, dim=0).argmax(dim=0) == label_val).sum().float() / float( label_val.size(0) )
 
                 print(f'Epoch: {epoch}, Batch {i} of {len(test_data)}, Train Loss: {loss_val.item()}, Batch Accuracy: {batch_accuracy_val}')
 
