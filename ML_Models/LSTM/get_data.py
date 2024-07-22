@@ -8,7 +8,7 @@ import torch
 
 
 class CustomDataset(Dataset):
-    def __init__(self, root_dir_main, dataset_dir):
+    def __init__(self, root_dir_main, dataset_dir, data_exclude_list):
         self.root_dir = root_dir_main
         self.folders = [f for f in os.listdir(self.root_dir) if os.path.isdir(os.path.join(self.root_dir, f))]
         self.paths_matched = []
@@ -19,11 +19,11 @@ class CustomDataset(Dataset):
         EID_samples = list(self.data_subset['Sample ID'])
 
         for label, folders in enumerate(self.folders):
-            data_paths = glob.glob(os.path.join(root_dir_main, folders, '*.h5'))
+            data_paths = glob.glob(os.path.join(root_dir_main, folders, '*.hdf'))
             basenames = [os.path.splitext(os.path.basename(file))[0] for file in data_paths]
 
             # match the basenames
-            basenames_match = [name for name in basenames if name in EID_samples]
+            basenames_match = [name for name in basenames if name in EID_samples and name not in data_exclude_list]
 
             # map matched basenames back to full paths
             matched_paths = [file for file in data_paths if os.path.splitext(os.path.basename(file))[0] in basenames_match]
@@ -78,8 +78,8 @@ def collate_custom(data):
         yraw.append(torch.tensor(data_transposed[1]))
         label_stack.append(torch.tensor(label_local))
 
-    padded_x = pad_sequence(xraw, batch_first=True, padding_value=-1)
-    padded_y = pad_sequence(yraw, batch_first=True, padding_value=-1)
+    padded_x = pad_sequence(xraw, batch_first=True, padding_value=0)
+    padded_y = pad_sequence(yraw, batch_first=True, padding_value=0)
 
     batch_stack = []
     for a,b in zip(padded_x, padded_y):
@@ -87,50 +87,3 @@ def collate_custom(data):
         batch_stack.append(stack)
 
     return torch.tensor(np.array(batch_stack)), torch.tensor(np.array(label_stack))
-
-# class CustomDataset(Dataset):
-#     def __init__(self, root_dir):
-#         self.root_dir = root_dir
-#         self.folders = [f for f in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, f))]
-#         self.paths = []
-#
-#         for label, folders in enumerate(self.folders):
-#             data_paths = glob.glob(os.path.join(root_dir, folders, '*.h5'))
-#             self.paths.extend(data_paths)
-#
-#     def __len__(self):
-#         return len(self.paths)
-#
-#     def __getitem__(self, idx):
-#         data_path_raw = self.paths[idx]
-#         data = pd.read_hdf(data_path_raw)
-#         col1 = data['m/z']
-#         col2 = data.iloc[:, -1]
-#
-#         data_stack = np.vstack((col1, col2)).T
-#
-#         return data_stack
-#
-# """
-# pad collate from:
-# https://suzyahyah.github.io/pytorch/2019/07/01/DataLoader-Pad-Pack-Sequence.html
-#
-# https://www.codefull.net/2018/11/use-pytorchs-dataloader-with-variable-length-sequences-for-lstm-gru/
-# """
-# # DO NOT CHANGE (PLEASE!)
-# def collate_custom(data):
-#     xraw = []
-#     yraw = []
-#     for i in range(len(data)):
-#         xraw.append(torch.tensor(data[i][:,0]))
-#         yraw.append(torch.tensor(data[i][:,1]))
-#
-#     padded_x = pad_sequence(xraw, batch_first=True, padding_value=1e-20)
-#     padded_y = pad_sequence(yraw, batch_first=True, padding_value=1e-20)
-#
-#     batch_stack = []
-#     for a,b in zip(padded_x, padded_y):
-#         stack = np.vstack((a,b)).T
-#         batch_stack.append(stack)
-#
-#     return torch.tensor(np.array(batch_stack))
