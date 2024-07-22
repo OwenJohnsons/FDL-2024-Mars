@@ -29,9 +29,10 @@ logging.getLogger('matplotlib.animation').setLevel(logging.WARNING)
 
 # Function to update the plot
 def update(i, df_aug, indices, ax):
+    keys = df_aug.keys()
     ax.clear()
     amu_slice = df_aug['m/z'][indices[i]:indices[i+1]]
-    count_slice = df_aug['abundance'][indices[i]:indices[i+1]]
+    count_slice = df_aug[keys[-1]][indices[i]:indices[i+1]]
     ax.plot(amu_slice, count_slice, "-k")
     ax.set_xlim((10, 150))
     ax.set_ylim((0, 1))
