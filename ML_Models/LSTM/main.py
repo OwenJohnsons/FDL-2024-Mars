@@ -44,6 +44,8 @@ test_data = DataLoader(CustomDataset(root_data_dir, test_EID_file, data_exclude_
 #----------------------------------------------------------------------------------------------------------
 best_accuracy = 0
 
+torch.manual_seed(42)
+
 for epoch in range(num_epochs):
     """
     train loop
