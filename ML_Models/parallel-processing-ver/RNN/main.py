@@ -65,6 +65,16 @@ def parse_args():
     parser.add_argument('--verbose', action='store_true', help='Increase output verbosity')
     return parser.parse_args()
 
+def write_python_file(filename, target_dir):
+    with open(filename) as f:
+        data = f.read()
+        f.close()
+
+    with open(os.path.join(target_dir,"traninig_config.txt"), mode="w") as f:
+        f.write(data)
+        f.close()
+
+
 args = parse_args()
 
 local_rank = initialize_distributed_backend()
@@ -83,7 +93,7 @@ from training_config import (
     root_data_dir, train_EID_file, test_EID_file, data_exclude_list
 )
 from get_data import CustomDataset, collate_custom
-from save_py_as_txt import write_python_file
+
 
 if torch.cuda.device_count() > 1:
     model_train = nn.parallel.DistributedDataParallel(model_train, device_ids=[local_rank]) # Ensure the model is wrapped with DistributedDataParallel after moving it to the correct device
