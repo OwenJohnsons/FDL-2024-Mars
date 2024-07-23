@@ -125,8 +125,8 @@ for epoch in range(num_epochs):
 
                 # write to tensorboard, print epoch loss to console
                 batch_global_val += data_record_interval
-                writer.add_scalar('Batch Train Loss', loss_val, batch_global_val)
-                writer.add_scalar('Batch Train Accuracy', batch_accuracy_val, batch_global_val)
+                writer.add_scalar('Batch Val Loss', loss_val, batch_global_val)
+                writer.add_scalar('Batch Val Accuracy', batch_accuracy_val, batch_global_val)
             
             # delete pred and losses to reduce memory consumption>
             del loss_val, pred_val, inputs_val, label_val
