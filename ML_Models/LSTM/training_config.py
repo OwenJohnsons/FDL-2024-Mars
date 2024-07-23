@@ -47,12 +47,15 @@ model_train.to(device)
 list of available optimizer algorithm in pytorch: https://pytorch.org/docs/stable/optim.html#algorithms
 """
 # training hyperparams
-learning_rate = 1e-4
-optimizer = torch.optim.AdamW(model_train.parameters(), lr=learning_rate)
 num_epochs = 10
+data_record_interval = 2
+learning_rate = 1e-4
+weight_decay = 1e-5
+optimizer = torch.optim.Adam(model_train.parameters(), lr=learning_rate)
+
 
 """
 list of available loss functions in pytorch: https://pytorch.org/docs/stable/nn.html#loss-functions
 """
 # criterion (aka loss function)
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss(reduction='sum')
