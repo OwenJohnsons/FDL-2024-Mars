@@ -37,9 +37,9 @@ model_train = LSTM(lstm_features, lstm_hidden_units, output_dim, num_layers_lstm
 device = 'cuda' if torch.cuda.is_available() else 'cpu' #DO NOT CHANGE
 print(f'Using device: {device}')
 
-if torch.cuda.device_count() > 1:
-    model_train = nn.parallel.DistributedDataParallel(model_train)
-
+if torch.cuda.is_available() > 1:
+    model_train = torch.nn.DataParallel(model_train)
+    
 model_train.to(device)
 
 #------------------------------------------------------------------------------------
