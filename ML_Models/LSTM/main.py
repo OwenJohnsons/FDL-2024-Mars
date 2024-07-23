@@ -117,7 +117,7 @@ for epoch in range(num_epochs):
                # compute batch accuracy
                 batch_accuracy_val = (torch.softmax(pred_val, dim=0).argmax(dim=0) == label_val).sum().float() / float( label_val.size(0) )
 
-                print(f'Epoch: {epoch}, Batch {i} of {len(test_data)}, Train Loss: {loss_val.item()}, Batch Accuracy: {batch_accuracy_val}')
+                print(f'Epoch: {epoch}, Batch {j} of {len(test_data)}, Train Loss: {loss_val.item()}, Batch Accuracy: {batch_accuracy_val}')
 
                 # write to tensorboard, print epoch loss to console
                 writer.add_scalar('Batch Train Loss', loss_val, j)
@@ -127,9 +127,9 @@ for epoch in range(num_epochs):
             del loss_val, pred_val, inputs_val, label_val
 
         # if new best val accuracy, save model
-        if accuracy_epoch_val > best_accuracy:
+        if batch_accuracy_val > best_accuracy:
             torch.save(model_train.state_dict(), model_save_path)
-            best_accuracy = accuracy_epoch_val
+            best_accuracy = batch_accuracy_val
         
 
 # close tensorboard logger instance
