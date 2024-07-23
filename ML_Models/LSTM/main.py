@@ -46,6 +46,9 @@ best_accuracy = 0
 
 torch.manual_seed(42)
 
+batch_global_train = 0
+batch_global_val = 0
+
 for epoch in range(num_epochs):
     """
     train loop
@@ -84,8 +87,9 @@ for epoch in range(num_epochs):
             print(f'Epoch: {epoch}, Batch {i} of {len(train_data)}, Train Loss: {loss_train.item()}, Avg Batch Accuracy: {batch_accuracy_train}')
             
             # write to tensorboard, print epoch loss to console
-            writer.add_scalar('Batch Train Loss', loss_train, i)
-            writer.add_scalar('Batch Train Accuracy', batch_accuracy_train, i)
+            batch_global_train += data_record_interval
+            writer.add_scalar('Batch Train Loss', loss_train, batch_global_train)
+            writer.add_scalar('Batch Train Accuracy', batch_accuracy_train, batch_global_train)
 
        
         # delete pred and losses to reduce memory consumption>
@@ -120,8 +124,9 @@ for epoch in range(num_epochs):
                 print(f'Epoch: {epoch}, Batch {j} of {len(test_data)}, Train Loss: {loss_val.item()}, Batch Accuracy: {batch_accuracy_val}')
 
                 # write to tensorboard, print epoch loss to console
-                writer.add_scalar('Batch Train Loss', loss_val, j)
-                writer.add_scalar('Batch Train Accuracy', batch_accuracy_val, j)
+                batch_global_val += data_record_interval
+                writer.add_scalar('Batch Train Loss', loss_val, batch_global_val)
+                writer.add_scalar('Batch Train Accuracy', batch_accuracy_val, batch_global_val)
             
             # delete pred and losses to reduce memory consumption>
             del loss_val, pred_val, inputs_val, label_val
