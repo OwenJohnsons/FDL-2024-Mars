@@ -50,5 +50,5 @@ learning_rate = 1e-4
 weight_decay = 1e-5
 optimizer = torch.optim.Adam(model_train.parameters(), lr=learning_rate)
 
-# - Criterion -----------------------------------------------------------------------
-criterion = nn.CrossEntropyLoss(reduction='sum')
+# # - Criterion -----------------------------------------------------------------------
+# criterion = nn.CrossEntropyLoss(reduction='sum')
