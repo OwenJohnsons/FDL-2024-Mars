@@ -13,13 +13,15 @@ class LSTM(nn.Module):
         self.num_layers = num_layers_lstm
         self.hidden_units = lstm_hidden_units
 
-    def forward(self, batch):
+    def forward(self, batch, device):
         x = batch
 
         # re-initialize hidden and cell states to make it a stateless model
         batch_size = len(batch)
         h0 = torch.zeros(self.num_layers, batch_size, self.hidden_units).requires_grad_()
         c0 = torch.zeros(self.num_layers, batch_size, self.hidden_units).requires_grad_()
+
+        h0, c0 = h0.to(device), c0.to(device)
 
         out, _ = self.lstm(x.float(), (h0,c0))
         out = self.fc(out[:,-1])
