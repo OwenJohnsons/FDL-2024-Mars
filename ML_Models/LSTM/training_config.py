@@ -19,6 +19,8 @@ batch_size_defined = 5
 shuffle_train = True #DO NOT CHANGE
 shuffle_test = False #DO NOT CHANGE
 
+data_exclude_list = ['SO401']
+
 #------------------------------------------------------------------------------------
 model_save_dir = 'C:/Users/Kanak Parmar/Desktop/FDL 2024/Mars Data/Codes/ML_pipelines/LSTM/trained_models'
 model_eval_fig_dir = 'C:/Users/Kanak Parmar/Desktop/FDL 2024/Mars Data/Codes/ML_pipelines/LSTM/model_eval'
