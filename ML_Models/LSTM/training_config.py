@@ -19,6 +19,8 @@ batch_size_defined = 5
 shuffle_train = True #DO NOT CHANGE
 shuffle_test = False #DO NOT CHANGE
 
+data_exclude_list = ['SO401']
+
 #------------------------------------------------------------------------------------
 model_save_dir = 'C:/Users/Kanak Parmar/Desktop/FDL 2024/Mars Data/Codes/ML_pipelines/LSTM/trained_models'
 model_eval_fig_dir = 'C:/Users/Kanak Parmar/Desktop/FDL 2024/Mars Data/Codes/ML_pipelines/LSTM/model_eval'
@@ -33,6 +35,11 @@ num_layers_lstm = 1
 model_train = LSTM(lstm_features, lstm_hidden_units, output_dim, num_layers_lstm)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu' #DO NOT CHANGE
+print(f'Using device: {device}')
+
+if torch.cuda.is_available() > 1:
+    model_train = torch.nn.DataParallel(model_train)
+    
 model_train.to(device)
 
 #------------------------------------------------------------------------------------
@@ -40,12 +47,15 @@ model_train.to(device)
 list of available optimizer algorithm in pytorch: https://pytorch.org/docs/stable/optim.html#algorithms
 """
 # training hyperparams
-learning_rate = 1e-4
-optimizer = torch.optim.AdamW(model_train.parameters(), lr=learning_rate)
 num_epochs = 10
+data_record_interval = 2
+learning_rate = 1e-4
+weight_decay = 1e-5
+optimizer = torch.optim.Adam(model_train.parameters(), lr=learning_rate)
+
 
 """
 list of available loss functions in pytorch: https://pytorch.org/docs/stable/nn.html#loss-functions
 """
 # criterion (aka loss function)
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss(reduction='sum')
