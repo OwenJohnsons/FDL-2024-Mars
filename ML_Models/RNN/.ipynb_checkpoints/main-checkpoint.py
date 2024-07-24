@@ -95,7 +95,10 @@ for epoch in range(num_epochs):
         
         # Adjust learning weights
         optimizer.step()
-    
+        
+        # # Pugazh's addition (to be removed later):
+        # if i == 5:
+        #     break
         
         # compute accuracy AFTER optimizer update
         # accuracy_batch = (torch.softmax(pred_train, dim=0).argmax(dim=0) == label_train).sum().float() / float( label_train.size(0) )
@@ -115,7 +118,11 @@ for epoch in range(num_epochs):
             # print(f'Predicted Labels without argmax: {torch.softmax(pred_train, dim=0)}')
             # print(f'Predicted Labels without argmax: {torch.softmax(pred_train, dim=1)}')
         
-          
+            
+            # print(f'Predicted Labels without argmax length: {len(torch.softmax(pred_train, dim=0))}')
+            # print(f'Train Labels length: {len(label_train)}')
+            
+            
             
             print(f'Epoch: {epoch}, Batch {i} of {len(train_data)}, Train Loss: {loss_train.item()}, Avg Batch Accuracy: {batch_accuracy_train}')
             
