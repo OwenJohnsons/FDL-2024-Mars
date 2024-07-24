@@ -31,7 +31,7 @@ Last updated:
 
 # --- Preamble ---
 import os
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE" # Suppresses a specific error message related to the environment variable 'KMP_DUPLICATE_LIB_OK'
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # Suppresses a specific error message related to the environment variable 'KMP_DUPLICATE_LIB_OK'
 import argparse
 import torch
 import torch.nn as nn
@@ -39,8 +39,9 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
 import time
+import matplotlib.pyplot as plt
 
-def initialize_distributed_backend(backend='nccl'): # must be called before any other function in this file
+def initialize_distributed_backend(backend='nccl'):  # must be called before any other function in this file
     """
     Initializes the distributed backend.
 
@@ -76,16 +77,14 @@ def write_python_file(filename, target_dir):
     """
     with open(filename) as f:
         data = f.read()
-        f.close()
-
-    with open(os.path.join(target_dir,"training_config.txt"), mode="w") as f:
+    
+    with open(os.path.join(target_dir, "training_config.txt"), mode="w") as f:
         f.write(data)
-        f.close()
 
 args = parse_args()
 local_rank = initialize_distributed_backend()
 
-if args.verbose:
+if args.verbose and local_rank == 0:  # Print information only on the main process
     print(f"Local Rank: {local_rank}")
     print(f"Using Backend: {dist.get_backend()}")
     print(f"World Size: {dist.get_world_size()}")
@@ -100,8 +99,12 @@ from training_config import (
 )
 from get_data import CustomDataset, collate_custom
 
+labels_str = ['carbonate', 'chloride', 'oxidized organic carbon', 'oxychlorine', 'sulfate', 'sulfide', 'nitrate', 'iron_oxide', 'phyllosilicate', 'silicate']
+# Move model to the correct device before wrapping it with DistributedDataParallel
+model_train = model_train.to(local_rank)
+
 if torch.cuda.device_count() > 1:
-    model_train = nn.parallel.DistributedDataParallel(model_train, device_ids=[local_rank]) # Ensure the model is wrapped with DistributedDataParallel after moving it to the correct device
+    model_train = nn.parallel.DistributedDataParallel(model_train, device_ids=[local_rank], output_device=local_rank)
 
 # Define run via time/day of initiation
 timestr = time.strftime("%Y%m%d-%H%M%S")
@@ -111,17 +114,13 @@ model_save_path = os.path.join(save_path, 'model.pt')
 # Ensure the parent directory exists
 os.makedirs(save_path, exist_ok=True)
 
-if not os.path.exists(save_path):
-    print('Making save folder...')
-    os.mkdir(save_path)
-
 # Instantiate the tensorboard logger
 writer = SummaryWriter(save_path)
 
 # Save everything in the training_config.py as a txt file in the model folder
 write_python_file(config_file_path, save_path)
 
-#--- Data Load --------------------------------------------------------------------------------------------
+# --- Data Load --------------------------------------------------------------------------------------------
 # Load training data
 train_dataset = CustomDataset(root_data_dir, train_EID_file, data_exclude_list)
 train_sampler = DistributedSampler(train_dataset)
@@ -132,28 +131,33 @@ test_dataset = CustomDataset(root_data_dir, test_EID_file, data_exclude_list)
 test_sampler = DistributedSampler(test_dataset)
 test_data = DataLoader(test_dataset, batch_size=batch_size_defined, shuffle=False, sampler=test_sampler, collate_fn=collate_custom)
 
-#---------------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------
 
-best_accuracy = 0 # Keep track of the best validation accuracy
-torch.manual_seed(42) # Set seed for reproducibility
-batch_global_train = 0 # Keep track of the global batch index for training
-batch_global_val = 0 # Keep track of the global batch index for validation
+best_accuracy = 0  # Keep track of the best validation accuracy
+torch.manual_seed(42)  # Set seed for reproducibility
+batch_global_train = 0  # Keep track of the global batch index for training
+batch_global_val = 0  # Keep track of the global batch index for validation
 
 # Use BCEWithLogitsLoss for multi-label classification
 criterion = nn.BCEWithLogitsLoss()
+
+# Initialize variables to store per-label accuracies
+train_label_accuracies = []
+val_label_accuracies = []
 
 for epoch in range(num_epochs):
     """
     Training loop
     """
-    if args.verbose:
+    if args.verbose and local_rank == 0:  # Print information only on the main process
         print(f'Training model on Epoch {epoch}')
     train_sampler.set_epoch(epoch)  # Ensure each process gets a different subset of data each epoch
     running_loss_train = 0
     accuracy_batch_train = []
+    label_accuracies_train = {label: [] for label in range(10)}  # Assuming 10 labels
     for i, data_train in enumerate(train_data):
         # Debug: Print rank and batch index
-        if args.verbose:
+        if args.verbose and local_rank == 0:  # Print information only on the main process
             print(f"Process {local_rank}, Epoch {epoch}, Batch {i}")
 
         # Extract input data and corresponding labels
@@ -181,30 +185,38 @@ for epoch in range(num_epochs):
         if i % data_record_interval == 0:
             # Compute batch accuracy for each label
             pred_train_sigmoid = torch.sigmoid(pred_train)
-            batch_accuracy_train = ((pred_train_sigmoid > 0.5) == label_train).float().mean()
+            for label in range(10):
+                batch_accuracy_label = ((pred_train_sigmoid[:, label] > 0.5) == label_train[:, label]).float().mean()
+                label_accuracies_train[label].append(batch_accuracy_label.item())
 
-            if args.verbose:
-                print(f'Process {local_rank}, Epoch: {epoch}, Batch {i} of {len(train_data)}, Train Loss: {loss_train.item()}, Avg Batch Accuracy: {batch_accuracy_train}')
+            if args.verbose and local_rank == 0:  # Print information only on the main process
+                print(f'Process {local_rank}, Epoch: {epoch}, Batch {i} of {len(train_data)}, Train Loss: {loss_train.item()}')
+                for label in range(10):
+                    print(f'Label {label} Train Accuracy: {label_accuracies_train[label][-1]:.4f}')
             
             # Write to tensorboard, print epoch loss to console
             batch_global_train += data_record_interval
             writer.add_scalar('Batch Train Loss', loss_train, batch_global_train)
-            writer.add_scalar('Batch Train Accuracy', batch_accuracy_train, batch_global_train)
 
         # Delete pred and losses to reduce memory consumption
         del loss_train, pred_train, inputs_train, label_train
 
+    # Calculate mean accuracy for each label
+    mean_label_accuracies_train = {label: sum(accs) / len(accs) for label, accs in label_accuracies_train.items()}
+    train_label_accuracies.append(mean_label_accuracies_train)
+
     """
     Validation loop
     """
-    if args.verbose:
+    if args.verbose and local_rank == 0:  # Print information only on the main process
         print(f'Validating model on Epoch {epoch}')
     running_loss_val = 0
     accuracy_batch_val = []
+    label_accuracies_val = {label: [] for label in range(10)}  # Assuming 10 labels
     with torch.no_grad():
         for j, data_val in enumerate(test_data):
             # Debug: Print rank and batch index
-            if args.verbose:
+            if args.verbose and local_rank == 0:  # Print information only on the main process
                 print(f"Process {local_rank}, Validation, Epoch {epoch}, Batch {j}")
 
             # Extract input data and corresponding labels
@@ -224,23 +236,52 @@ for epoch in range(num_epochs):
             if j % data_record_interval == 0:
                 # Compute batch accuracy for each label
                 pred_val_sigmoid = torch.sigmoid(pred_val)
-                batch_accuracy_val = ((pred_val_sigmoid > 0.5) == label_val).float().mean()
+                for label in range(10):
+                    batch_accuracy_label = ((pred_val_sigmoid[:, label] > 0.5) == label_val[:, label]).float().mean()
+                    label_accuracies_val[label].append(batch_accuracy_label.item())
 
-                if args.verbose:
-                    print(f'Process {local_rank}, Epoch: {epoch}, Batch {j} of {len(test_data)}, Val Loss: {loss_val.item()}, Batch Accuracy: {batch_accuracy_val}')
+                if args.verbose and local_rank == 0:  # Print information only on the main process
+                    print(f'Process {local_rank}, Epoch: {epoch}, Batch {j} of {len(test_data)}, Val Loss: {loss_val.item()}')
+                    for label in range(10):
+                        print(f'{labels_str[label]} Val Accuracy: {label_accuracies_val[label][-1]:.4f}')
 
                 # Write to tensorboard, print epoch loss to console
                 batch_global_val += data_record_interval
                 writer.add_scalar('Batch Val Loss', loss_val, batch_global_val)
-                writer.add_scalar('Batch Val Accuracy', batch_accuracy_val, batch_global_val)
 
             # Delete pred and losses to reduce memory consumption
             del loss_val, pred_val, inputs_val, label_val
 
+        # Calculate mean accuracy for each label
+        mean_label_accuracies_val = {label: sum(accs) / len(accs) for label, accs in label_accuracies_val.items()}
+        val_label_accuracies.append(mean_label_accuracies_val)
+
+        # Calculate the overall average accuracy across all labels
+        avg_accuracy_val = sum(mean_label_accuracies_val.values()) / len(mean_label_accuracies_val)
+
         # If new best validation accuracy, save model
-        if batch_accuracy_val > best_accuracy:
+        if avg_accuracy_val > best_accuracy and local_rank == 0:  # Save model only on the main process
             torch.save(model_train.state_dict(), model_save_path)
-            best_accuracy = batch_accuracy_val
+            best_accuracy = avg_accuracy_val
 
 # Close tensorboard logger instance
 writer.close()
+
+# Save the label accuracies for plotting later
+torch.save({
+    'train_label_accuracies': train_label_accuracies,
+    'val_label_accuracies': val_label_accuracies
+}, os.path.join(save_path, 'label_accuracies.pt'))
+
+# Plot the accuracies for each label
+train_label_accuracies = torch.load(os.path.join(save_path, 'label_accuracies.pt'))['train_label_accuracies']
+val_label_accuracies = torch.load(os.path.join(save_path, 'label_accuracies.pt'))['val_label_accuracies']
+
+for label in range(10):
+    plt.plot([epoch[label] for epoch in train_label_accuracies], label=f'Train Label {label}')
+    plt.plot([epoch[label] for epoch in val_label_accuracies], label=f'Val Label {label}')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.title(f'Accuracy for Label {label}')
+    plt.legend()
+    plt.savefig(str(label) + '_accuracy.png')
