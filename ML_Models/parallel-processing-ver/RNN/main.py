@@ -160,6 +160,9 @@ for epoch in range(num_epochs):
         inputs_train, label_train = data_train
         inputs_train, label_train = inputs_train.to(device), label_train.to(device)
         
+        # Convert label_train to float
+        label_train = label_train.float()
+        
         # Zero your gradients for every batch
         optimizer.zero_grad()
 
@@ -207,6 +210,9 @@ for epoch in range(num_epochs):
             # Extract input data and corresponding labels
             inputs_val, label_val = data_val
             inputs_val, label_val = inputs_val.to(device), label_val.to(device)
+
+            # Convert label_val to float
+            label_val = label_val.float()
 
             # Get the prediction on batch
             pred_val = model_train(inputs_val)
