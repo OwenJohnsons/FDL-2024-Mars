@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Number of GPUs to use
-NUM_GPUS=2  # Replace with the number of GPUs you have
+# NUM_GPUS=2  # Replace with the number of GPUs you have
+NUM_GPUS=1
 
 # Path to main python script 
 SCRIPT_PATH="main.py"

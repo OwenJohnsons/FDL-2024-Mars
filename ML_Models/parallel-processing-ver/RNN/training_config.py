@@ -7,8 +7,8 @@ import os
 from model import RNN
 
 # - Directory Definitions --------------------------------------------------------------
-code_root_dir = "/home/owenj/fdl-2024-mars/" # change to the root directory of the code repository
-bucket_dir = "/home/owenj/bucket" # change to the root directory of the mounted bucket
+code_root_dir = "/home/jupyter/fdl-2024-mars/" # change to the root directory of the code repository
+bucket_dir = "/home/jupyter/pugal_data_tree" # change to the root directory of the mounted bucket
 
 root_data_dir = bucket_dir + '/samurai_data_base/' # Data directory, change to samurai_data_mini to use smaller dataset for debugging. 
 
