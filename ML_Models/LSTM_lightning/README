@@ -1,0 +1,3 @@
+To use the pytorch lightning scripts on GCP, we need to use the following command when initiating the file run from terminal:
+
+PJRT_DEVICE=CUDA GPU_NUM_DEVICE=1 python main.py
