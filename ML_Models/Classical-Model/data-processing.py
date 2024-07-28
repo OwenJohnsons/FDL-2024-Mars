@@ -56,35 +56,37 @@ def longest_sample(file_map_df):
 
 def load_spectra(file_path, max_length):
     """
-    Function Purpose: Load the spectra data for a given sample ID
+    Function Purpose: Load the spectra data for a given file path.
 
     Args:
-        sample_id: ID of the sample
-        file_map_df: DataFrame mapping sample IDs to file paths
+        file_path: Path to the HDF file.
+        max_length: Maximum length of the spectra data arrays.
 
     Returns:
-        concatenated_spectra_data: Concatenated and transposed spectra data array with columns 'm/z' and 'abundance'
+        result_array: Concatenated and transposed spectra data array with columns 'm/z' and 'abundance'.
     """
-
+    # Read the HDF5 file efficiently
     data_df = pd.read_hdf(file_path)
-    time_ind = data_df["time"].unique()
+    time_groups = data_df.groupby('time')
 
-    amu_array = []; abundance_array = []
+    amu_array = []
+    abundance_array = []
 
-    for i in range(len(time_ind)):
-        df_slice = data_df[data_df["time"] == time_ind[i]]
-        amu = df_slice["m/z"].values
-        abundance = df_slice["abundance"].values
+    for time, group in time_groups:
+        amu = group['m/z'].values
+        abundance = group['abundance'].values
+        amu_array.append(amu)
+        abundance_array.append(abundance)
 
-        amu_array.append(amu); abundance_array.append(abundance)
-    
-    # 3D array with shape (n_samples, n_channels, n_timesteps)
+    amu_array = np.array(amu_array)
+    abundance_array = np.array(abundance_array)
     result_array = np.stack((amu_array, abundance_array), axis=1)
 
-    if result_array.shape[0] != max_length:
-        padding = np.zeros((max_length - result_array.shape[0], 2, result_array.shape[2]))
+    current_length = result_array.shape[0]
+    if current_length < max_length:
+        padding = np.zeros((max_length - current_length, 2, result_array.shape[2]))
         result_array = np.concatenate((result_array, padding), axis=0)
-
+    
     return result_array
 
 def flatten_spectra(spectra_data):
