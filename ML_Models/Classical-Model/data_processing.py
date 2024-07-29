@@ -3,7 +3,8 @@ import pandas as pd
 from glob import glob
 import os
 from tqdm import tqdm
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from multiprocessing import Pool, cpu_count
 
 def create_file_map(database_path):
     """
@@ -65,8 +66,8 @@ def load_spectra(file_path, max_length):
     Returns:
         result_array: Concatenated and transposed spectra data array with columns 'm/z' and 'abundance'.
     """
-    # Read the HDF5 file efficiently
-    data_df = pd.read_hdf(file_path)
+    with pd.HDFStore(file_path, 'r') as store:
+        data_df = store.get('data')  # Adjust if necessary
     time_groups = data_df.groupby('time')
 
     amu_array = []
@@ -104,7 +105,19 @@ def flatten_spectra(spectra_data):
 
     return flattened_spectra_data
 
-def load_data_set(ids, file_map, max_length):
+def process_sample(args):
+    sample_id, file_map, max_length = args
+    data_2D = []; idv_sample_id_array = []
+    paths = file_map[file_map['id'] == sample_id]['path'].values
+    for path in paths:
+        spectra_data = load_spectra(path, max_length)
+        flattened_spectra = flatten_spectra(spectra_data)
+        data_2D.append(flattened_spectra)
+        idv_sample_id_array.append(sample_id)
+
+    return np.concatenate(data_2D, axis=0), idv_sample_id_array
+
+def load_data_set(ids, file_map, max_length, num_workers=None):
     """
     Function Purpose: Load the data set for a given set of sample IDs into a [n, (samples * channels * spectra)]
 
@@ -112,22 +125,29 @@ def load_data_set(ids, file_map, max_length):
         ids: List of sample IDs for training or testing 
         file_map: DataFrame mapping sample IDs to file paths
         max_length: Length of the longest sample in the dataset
+        num_workers: Number of worker processes for parallel processing
 
     Returns:
         An array that contains the spectra data for the given sample IDs [n, (samples * channels * spectra)]
     """
-    data_2D = []; ids_in_data = []
+    data_2D = []
+    ids_in_data = []
 
-    for i in tqdm(range(len(ids))):
-        sample_id = ids[i]
-        paths = file_map[file_map['id'] == sample_id]['path'].values
-        for path in paths:
-            spectra_data = load_spectra(path, max_length)
-            flattened_spectra = flatten_spectra(spectra_data)
-            data_2D.append(flattened_spectra)
-            ids_in_data.append(sample_id)
-        
-    return np.concatenate(data_2D, axis=0), ids_in_data
+    with ProcessPoolExecutor(max_workers=num_workers or os.cpu_count()) as executor:
+        futures = {executor.submit(process_sample, (sample_id, file_map, max_length)): sample_id for sample_id in ids}
+        for future in tqdm(as_completed(futures), total=len(futures)):
+            try:
+                result, sample_id = future.result()
+                data_2D.append(result)
+                ids_in_data.append(sample_id)
+            except Exception as e:
+                print(f"Error processing sample {futures[future]}: {e}")
+
+    data_2D = np.concatenate(data_2D, axis=0)
+    ids_in_data = list(ids_in_data)
+    ids_in_data = [item for sublist in ids_in_data for item in sublist]
+
+    return data_2D, ids_in_data
 
 def load_labels(hdf_file, needed_ids):
     """
