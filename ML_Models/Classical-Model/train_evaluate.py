@@ -1,20 +1,25 @@
 """
 Code Purpose: 
+    This script calls functions from classifiers.py and data_processing.py to carry out multi-class multi-label classification on EGAMS data for the Mars 2024 FDL Challenge 
 
-Modules:
+Arguments:
+    --database_path: Path to the database
+    --train_set: Path to the training set EIDs 
+    --test_set: Path to the testing set EIDs 
+    --max_length: Maximum length of the samples (if not provided, the script will calculate it)
+    --classifier: Classifier to use
+    --params: Parameters for the classifier (see scikit-learn documentation for the classifier you choose fror specifics on the parameters)
 
 Note:
-    - data-processing.py is a module that contains functions for data processing and loading
-    - model.py is a module that contains functions for model building and training
-    - train-evaluate.py is a module that contains functions for training and evaluating the model
-  
-Imports:
+    - data-processing.py is a module that contains functions for data processing and loading.
+    - classifiers.py is a module that contains functions for creating and training classifiers.
+    - train-evaluate.py is a module that contains functions for training and evaluating the model and contains the main() function. 
 
 Author:
     [Owen A. Johnson]
 
 Last updated:
-    [2024-07-25]
+    [2024-07-29]
 """
 
 import numpy as np
@@ -23,6 +28,8 @@ from data_processing import *
 from classifiers import *
 import argparse
 import json 
+from sklearn.metrics import accuracy_score
+import time
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -50,22 +57,27 @@ def main():
     file_paths = file_map['path'].values
 
     # --- Loading Training Data --- 
+    tr_dl_start = time.time()
     train_ids = pd.read_hdf(args.train_set)['Sample ID'].values
     train_data, train_full_id_array = load_data_set(train_ids, file_map, max_length)
     train_labels = load_labels(args.train_set, train_full_id_array)
 
     print('Training data shape:', train_data.shape)
     print('Training labels shape:', train_labels.shape)
+    tr_dl_time = time.time() - tr_dl_start
 
     # --- Loading Testing Data ---
+    test_dl_time = time.time()
     test_ids = pd.read_hdf(args.test_set)['Sample ID'].values
     test_data, test_full_id_array = load_data_set(test_ids, file_map, max_length)
     test_labels = load_labels(args.test_set, test_full_id_array)
+    test_dl_time = time.time() - test_dl_time
 
     print('Training data shape:', train_data.shape)
     print('Training labels shape:', train_labels.shape)
 
     # --- Training the model ---
+    train_time = time.time()
     params = json.loads(args.params)
     print("\nTraining the model...")
     classifier = get_classifier(args.classifier, params)
@@ -73,17 +85,30 @@ def main():
     multi_target_classifier.fit(train_data, train_labels)
 
     labels = multi_target_classifier.predict(test_data)
+    train_time = time.time() - train_time
+
 
     accuracies = []
 
     for i in range(test_labels.shape[1]):
         accuracy = accuracy_score(test_labels[:, i], labels[:, i])
         accuracies.append(accuracy)
-        print(f"Accuracy for label {i}: {accuracy}")
+    
 
-    print("Training complete. Accuracies for each label:")
+    print("\nTraining complete! \n--- Accuracies for each label ---")
+
+    labels_string = ['carbonate', 'chloride', 'iron oxide', 'nitrate', 
+    'oxidized organic carbon', 'oxychlorine', 'phyllosilicate', 
+    'silicate', 'sulfate', 'sulfide']
+
     for i, accuracy in enumerate(accuracies):
-        print(f"Label {i}: {accuracy}")
+        print(f"{labels_string[i]}: {accuracy:.3f}%")
+    # two decimal places
+
+    print('\n--- EXECUTION TIME BREAKDOWN ---')
+    print(f"Training data load time: {tr_dl_time / 60} mins")
+    print(f"Testing data load time: {test_dl_time / 60} mins")
+    print(f"Training time: {train_time / 60} mins")
 
 if __name__ == "__main__":
     print("Starting script...")
