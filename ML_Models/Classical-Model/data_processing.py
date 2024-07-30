@@ -16,7 +16,7 @@ def create_file_map(database_path):
     Returns:
         file_map_df: DataFrame with columns 'path' and 'id'
     """
-    hdf_files = glob(os.path.join(database_path, '**', 'S*.hdf'), recursive=True)
+    hdf_files = glob(os.path.join(database_path, '**', '*.hdf'), recursive=True)
     
     print('Number of HDF files found:', len(hdf_files))  # Debugging statement
     
@@ -24,7 +24,7 @@ def create_file_map(database_path):
     for path in hdf_files:
 
         sample_id = os.path.basename(path).replace('.hdf', '')
-        if sample_id == 'S0401': 
+        if sample_id == 'S0401' or sample_id == '25048': 
             continue
         data.append({'path': path, 'id': sample_id})
     
@@ -56,38 +56,32 @@ def longest_sample(file_map_df):
     return max_length
 
 def load_spectra(file_path, max_length):
-    """
-    Function Purpose: Load the spectra data for a given file path.
-
-    Args:
-        file_path: Path to the HDF file.
-        max_length: Maximum length of the spectra data arrays.
-
-    Returns:
-        result_array: Concatenated and transposed spectra data array with columns 'm/z' and 'abundance'.
-    """
     with pd.HDFStore(file_path, 'r') as store:
-        data_df = store.get('data')  # Adjust if necessary
-    time_groups = data_df.groupby('time')
-
+        data_df = store.get('data')
+        
     amu_array = []
     abundance_array = []
 
-    for time, group in time_groups:
-        amu = group['m/z'].values
-        abundance = group['abundance'].values
-        amu_array.append(amu)
-        abundance_array.append(abundance)
+    if file_path.split('/')[-1][0] == 'S':
+        time_groups = data_df.groupby('time')
+        for time, group in time_groups:
+            amu_array.append(group['m/z'].values)
+            abundance_array.append(group['abundance'].values)
+    else:
+        idxes = np.where(data_df['m/z'].values[:-1] > data_df['m/z'].values[1:])[0].tolist()
+        idxes = [0] + idxes + [len(data_df)]
+        for i in range(len(idxes) - 1):
+            amu_array.append(data_df['m/z'].values[idxes[i]:idxes[i + 1]])
+            abundance_array.append(data_df['abundance'].values[idxes[i]:idxes[i + 1]])
 
     amu_array = np.array(amu_array)
     abundance_array = np.array(abundance_array)
     result_array = np.stack((amu_array, abundance_array), axis=1)
-
     current_length = result_array.shape[0]
+
     if current_length < max_length:
         padding = np.zeros((max_length - current_length, 2, result_array.shape[2]))
         result_array = np.concatenate((result_array, padding), axis=0)
-    
     return result_array
 
 def flatten_spectra(spectra_data):
