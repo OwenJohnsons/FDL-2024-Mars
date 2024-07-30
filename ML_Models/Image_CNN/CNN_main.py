@@ -49,7 +49,6 @@ pl_Model = last_layer.LitMLCNet(Model)
 
 trainer = pl.Trainer(default_root_dir = './',
                      max_epochs = 20,
-                     log_every_n_steps = 5,
                      accelerator='gpu',
                      devices = 1,
                      callbacks=ModelCheckpoint(dirpath='/home/arushi/model_checkpoints/', filename='model_checkpoint')

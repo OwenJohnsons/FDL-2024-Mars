@@ -39,14 +39,14 @@ class LitMLCNet(pl.LightningModule):
             x,y = batch
             outputs = self.model(x)
             loss = F.binary_cross_entropy_with_logits(outputs,y)
-            self.log("train/loss",loss.item() / len(y), on_epoch=True, prog_bar=True, logger=True)
+            self.log("train/loss",loss.item() / len(y), on_epoch=True, on_step=False, prog_bar=True, logger=True, sync_dist=True)
             return loss
         
         def validation_step(self,batch,batch_idx):
             x,y = batch
             outputs = self.model(x)
             loss = F.binary_cross_entropy_with_logits(outputs,y)
-            self.log("val/loss",loss.item() / len(y))
+            self.log("val/loss",loss.item() / len(y), on_epoch=True, on_step=False, prog_bar=True, logger=True, sync_dist=True)
         
         def predict_step(self,batch,batch_idx,dataloader_idx=0):
             x,y = batch

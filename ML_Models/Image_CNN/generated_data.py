@@ -15,6 +15,7 @@ def get_datasets(root_dir):
 
     train_dir = root_dir + "train/"
     test_dir  = root_dir + "test/"
+    
     train_label_file = root_dir + "pd_train.hdf"
     test_label_file  = root_dir + "pd_test.hdf"
 
