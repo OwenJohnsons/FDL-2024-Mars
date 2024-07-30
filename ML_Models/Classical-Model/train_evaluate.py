@@ -24,11 +24,15 @@ Last updated:
 
 import numpy as np
 import os
+import pandas as pd  
 from data_processing import *
 from classifiers import *
 import argparse
 import json 
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, recall_score, precision_score, ConfusionMatrixDisplay 
+from sklearn.multioutput import MultiOutputClassifier 
+import matplotlib.pyplot as plt 
+import scienceplots; plt.style.use(['science', 'no-latex'])
 import time
 
 def parse_args():
@@ -40,6 +44,12 @@ def parse_args():
     parser.add_argument("--classifier", required=True, choices=["RandomForest", "LogisticRegression", "SVC"]) 
     parser.add_argument("--params", required=True)
     return parser.parse_args()
+
+def plot_confusion_matrix(true_labels, predicted_labels, title, all_labels):
+    disp = ConfusionMatrixDisplay.from_predictions(true_labels, predicted_labels, labels=all_labels)
+    disp.ax_.set_title(title)
+    plt.savefig(f"{title}_confusion_matrix.jpg", dpi=200)  
+    plt.close()
 
 def main():
     args = parse_args()
@@ -73,8 +83,8 @@ def main():
     test_labels = load_labels(args.test_set, test_full_id_array)
     test_dl_time = time.time() - test_dl_time
 
-    print('Training data shape:', train_data.shape)
-    print('Training labels shape:', train_labels.shape)
+    print('Test data shape:', test_data.shape)
+    print('Test labels shape:', test_labels.shape)
 
     # --- Training the model ---
     train_time = time.time()
@@ -86,7 +96,6 @@ def main():
 
     labels = multi_target_classifier.predict(test_data)
     train_time = time.time() - train_time
-
 
     accuracies = []
 
@@ -100,10 +109,27 @@ def main():
     labels_string = ['carbonate', 'chloride', 'iron oxide', 'nitrate', 
     'oxidized organic carbon', 'oxychlorine', 'phyllosilicate', 
     'silicate', 'sulfate', 'sulfide']
+    all_labels = [0, 1]
 
     for i, accuracy in enumerate(accuracies):
-        print(f"{labels_string[i]}: {accuracy:.3f}%")
-    # two decimal places
+        print(f"{labels_string[i]}: {100*accuracy:.2f}%")
+
+    # --- Recall ---
+    print("\n--- Recall ---")
+    for i in range(test_labels.shape[1]):
+        r_score = recall_score(test_labels[:, i], labels[:, i])
+        print(f"{labels_string[i]}: {r_score:.2f}")
+
+    # --- Precision ---
+    print("\n--- Precision ---")
+    for i in range(test_labels.shape[1]):
+        pre_score = precision_score(test_labels[:, i], labels[:, i])
+        print(f"{labels_string[i]}: {pre_score:.2f}")
+    
+    # --- Plot Confusion Matrix ---
+    for i in range(test_labels.shape[1]):
+        plot_confusion_matrix(test_labels[:, i], labels[:, i], labels_string[i], all_labels)
+
 
     print('\n--- EXECUTION TIME BREAKDOWN ---')
     print(f"Training data load time: {tr_dl_time / 60} mins")
