@@ -24,6 +24,7 @@ Last updated:
 
 import numpy as np
 import os
+import gc 
 import pandas as pd  
 from data_processing import *
 from classifiers import *
@@ -43,13 +44,17 @@ def parse_args():
     parser.add_argument("--max_length", required=False)
     parser.add_argument("--classifier", required=True, choices=["RandomForest", "LogisticRegression", "SVC"]) 
     parser.add_argument("--params", required=True)
+    parser.add_argument("--ensemble", required=False, default=False)
     return parser.parse_args()
 
-def plot_confusion_matrix(true_labels, predicted_labels, title, all_labels):
+def plot_confusion_matrix(true_labels, predicted_labels, title, all_labels, directory):
     disp = ConfusionMatrixDisplay.from_predictions(true_labels, predicted_labels, labels=all_labels)
     disp.ax_.set_title(title)
-    plt.savefig(f"{title}_confusion_matrix.jpg", dpi=200)  
+    plt.savefig(f"{directory}/{title}_confusion_matrix.jpg", dpi=200)
     plt.close()
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
 
 def main():
     args = parse_args()
@@ -63,14 +68,19 @@ def main():
         print('Fetching max sample length...')
         max_length = longest_sample(file_map)
         print(f"Longest sample length: {max_length}")
-
+    
+    gc.collect()
     file_paths = file_map['path'].values
+
 
     # --- Loading Training Data --- 
     tr_dl_start = time.time()
-    train_ids = pd.read_hdf(args.train_set)['Sample ID'].values
+    train_ids = pd.read_hdf(args.train_set)['Sample ID'].values.astype(str)
+
     train_data, train_full_id_array = load_data_set(train_ids, file_map, max_length)
     train_labels = load_labels(args.train_set, train_full_id_array)
+    print('Training Labels Distribution:', np.sum(train_labels, axis=0))
+    
 
     print('Training data shape:', train_data.shape)
     print('Training labels shape:', train_labels.shape)
@@ -78,9 +88,11 @@ def main():
 
     # --- Loading Testing Data ---
     test_dl_time = time.time()
-    test_ids = pd.read_hdf(args.test_set)['Sample ID'].values
+    test_ids = pd.read_hdf(args.test_set)['Sample ID'].values.astype(str)
+
     test_data, test_full_id_array = load_data_set(test_ids, file_map, max_length)
     test_labels = load_labels(args.test_set, test_full_id_array)
+    print('Test Labels Distribution:', np.sum(test_labels, axis=0))
     test_dl_time = time.time() - test_dl_time
 
     print('Test data shape:', test_data.shape)
@@ -94,8 +106,12 @@ def main():
     multi_target_classifier = MultiOutputClassifier(classifier, n_jobs=2)
     multi_target_classifier.fit(train_data, train_labels)
 
+    # # --- Ensemble Method --- 
+    if args.ensemble:
+        print("Ensemble method selected...")
+
     labels = multi_target_classifier.predict(test_data)
-    train_time = time.time() - train_time
+    train_time = time.time() - train_time   
 
     accuracies = []
 
@@ -111,6 +127,21 @@ def main():
     'silicate', 'sulfate', 'sulfide']
     all_labels = [0, 1]
 
+    # --- Make save directory ---
+    classifier_name = args.classifier
+    date = time.strftime("%Y-%m-%d")
+    max_length = str(max_length)
+
+    save_dir = f"results/{classifier_name}_{max_length}_{date}"
+
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    # --- Save predictions ---
+    np.save(f"{save_dir}/predictions.npy", labels)
+    np.save(f"{save_dir}/sigmoid_predictions.npy", sigmoid(test_labels))
+
+    # --- Accuracy ---
     for i, accuracy in enumerate(accuracies):
         print(f"{labels_string[i]}: {100*accuracy:.2f}%")
 
@@ -125,10 +156,26 @@ def main():
     for i in range(test_labels.shape[1]):
         pre_score = precision_score(test_labels[:, i], labels[:, i])
         print(f"{labels_string[i]}: {pre_score:.2f}")
+
+    # --- Save metrics ---
+    with open(f"{save_dir}/metrics.txt", 'w') as f:
+        f.write("\n--- Accuracies for each label ---\n")
+        for i, accuracy in enumerate(accuracies):
+            f.write(f"{labels_string[i]}: {100*accuracy:.2f}%\n")
+
+        f.write("\n--- Recall ---\n")
+        for i in range(test_labels.shape[1]):
+            r_score = recall_score(test_labels[:, i], labels[:, i])
+            f.write(f"{labels_string[i]}: {r_score:.2f}\n")
+
+        f.write("\n--- Precision ---\n")
+        for i in range(test_labels.shape[1]):
+            pre_score = precision_score(test_labels[:, i], labels[:, i])
+            f.write(f"{labels_string[i]}: {pre_score:.2f}\n")
     
     # --- Plot Confusion Matrix ---
     for i in range(test_labels.shape[1]):
-        plot_confusion_matrix(test_labels[:, i], labels[:, i], labels_string[i], all_labels)
+        plot_confusion_matrix(test_labels[:, i], labels[:, i], labels_string[i], all_labels, save_dir)
 
 
     print('\n--- EXECUTION TIME BREAKDOWN ---')
