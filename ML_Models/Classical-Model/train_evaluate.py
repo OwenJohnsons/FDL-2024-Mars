@@ -19,7 +19,7 @@ Author:
     [Owen A. Johnson]
 
 Last updated:
-    [2024-08-01]
+    [2024-07-29]
 """
 
 import numpy as np
@@ -59,6 +59,7 @@ def plot_confusion_matrix(true_labels, predicted_labels, title, all_labels, dire
     
     plt.savefig(f"{directory}/{title}_confusion_matrix.jpg", dpi=200)
     plt.close()
+
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
@@ -110,6 +111,10 @@ def main():
     classifier = get_classifier(args.classifier, params)
     multi_target_classifier = MultiOutputClassifier(classifier, n_jobs=2)
     multi_target_classifier.fit(train_data, train_labels)
+
+    # # --- Ensemble Method --- 
+    if args.ensemble:
+        print("Ensemble method selected...")
 
     labels = multi_target_classifier.predict(test_data)
     train_time = time.time() - train_time   
