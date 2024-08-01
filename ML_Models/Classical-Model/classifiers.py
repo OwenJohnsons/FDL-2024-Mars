@@ -6,6 +6,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import GradientBoostingClassifier, AdaBoostClassifier
 from xgboost import XGBClassifier
+from sklearn.linear_model import RidgeClassifier
 
 def get_classifier(classifier_name, params):
     if classifier_name == "RandomForest":
@@ -24,5 +25,9 @@ def get_classifier(classifier_name, params):
         return AdaBoostClassifier(**params)
     elif classifier_name == "XGBoost":
         return XGBClassifier(**params)
+    elif classifier_name == "KNeighbors":
+        return KNeighborsClassifier(**params)
+    elif classifier_name == "RidgeClassifier":
+        return RidgeClassifier(**params)
     else:
         raise ValueError(f"Unknown classifier: {classifier_name}")
