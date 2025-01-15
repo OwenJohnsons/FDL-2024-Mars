@@ -17,3 +17,16 @@ This script generates combinatorial data augmentations for a given dataset and s
   - matplotlib
   - itertools
   - argparse
+
+## Usage
+
+### Command-line Arguments
+
+- `--input` (required): Path to the input HDF5 file containing the dataset.
+- `--output` (required): Path to the directory where augmented data will be saved.
+
+### Example
+
+Run the script as follows:
+
+```python augmentation_X.py --input path/to/input.hdf5 --output path/to/output_directory```
