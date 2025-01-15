@@ -30,3 +30,25 @@ This script generates combinatorial data augmentations for a given dataset and s
 Run the script as follows:
 
 ```python augmentation_X.py --input path/to/input.hdf5 --output path/to/output_directory```
+
+## Output Structure
+
+The augmented data will be saved in the specified output directory, organized by augmentation types. Each folder corresponds to a specific augmentation and contains the associated dataframes.
+
+## Functions
+
+### `rSubset`
+Generates subsets of a given size from an array.
+
+### `get_total_comb_aug_type`
+Generates all possible combinations of the base data augmentation columns.
+
+### `get_comb_data_aug`
+Performs combinatorial augmentations and normalizes the data.
+
+### `save_dataframes`
+Saves the generated dataframes into appropriate directories.
+
+
+## Contact
+- **Author(s):** Pugazhenthi Sivasankar and Owen A. Johnson (ojohnson@tcd.ie) 
