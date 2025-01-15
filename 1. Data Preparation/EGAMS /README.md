@@ -43,6 +43,16 @@ The `EGAMS_workshop_labels.csv` file must contain the following columns:
   - `X`: Indicates the presence of the label.
   - `~`: Indicates uncertainty regarding the presence of the label.
   - Blank: Indicates the absence of the label.
+ 
+### CSV Columns for Metadata
+The `PDS_SAM_file_summary.csv` file must contain the following columns:
+- **Filename:** Name of the data file associated with the metadata.
+- **Sample:** Describes the sample location or identifier.
+- **Experiment:** Type of experiment conducted (e.g., `qms` for quadrupole mass spectrometry).
+- **Where:** Indicates where the sample was collected or processed.
+- **DESCRIPTION:** Provides additional descriptive information about the sample or experiment.
+- **EID:** A unique identifier for each sample or experiment.
+
 
 ## Script Workflow
 1. **Load Labels:**
@@ -87,15 +97,11 @@ The `EGAMS_workshop_labels.csv` file must contain the following columns:
 ### Running the Script
 1. Ensure the input files are available in the specified directories.
 2. Run the script:
-   ```
-   python extract_labels.py
-   ```.
+   ```python extract_labels.py```.
 
 ### Notes
 - The script skips files related to blanks, calibration, and certain locations.
 
-
-# Extracting labels from SAM Workshop Results 
 
 # Cleaning PDS Data
 
@@ -170,9 +176,7 @@ The script `generate_hdf5.py` processes raw `.txt` files from the NASA Planetary
 ### Running the Script
 1. Ensure the input files are available in the specified directories.
 2. Run the script:
-   ```
-   python generate_hdf5.py
-```
+   ```python generate_hdf5.py```
 
 ### Output Location
 - HDF5 File: `PDS_EGAMS_H5_files/`
@@ -183,4 +187,4 @@ The script `generate_hdf5.py` processes raw `.txt` files from the NASA Planetary
 - Data is normalized by the maximum count in each file.
 
 ## Contact
-- **Author:** Owen A. Johnson (ojohnson@tcd.ie) & Arushi Saxena
+- **Author(s):** Owen A. Johnson (ojohnson@tcd.ie) & Arushi Saxena
